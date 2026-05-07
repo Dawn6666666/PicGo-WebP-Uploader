@@ -25,7 +25,7 @@ await cleanupDirectory(OUTPUT_DIR);
 const upload = multer({
   dest: INPUT_DIR,
   limits: {
-    files: 200,
+    files: 1000,
     fileSize: 100 * 1024 * 1024
   }
 });
@@ -59,10 +59,15 @@ app.post("/api/compress", upload.array("images"), async (req, res) => {
   const quality = clampNumber(req.body.quality, 1, 100, 82);
   const effort = clampNumber(req.body.effort, 0, 6, 6);
   const maxWidth = clampNumber(req.body.maxWidth, 0, 20000, 0);
+  const compressConcurrency = clampNumber(req.body.compressConcurrency, 1, 64, 8);
+  const baseIndex = clampNumber(req.body.baseIndex, 0, 1_000_000, 0);
+  const batchNumber = clampNumber(req.body.batchNumber, 1, 10_000, 1);
+  const totalBatches = clampNumber(req.body.totalBatches, 1, 10_000, 1);
   const files = req.files ?? [];
-  const cleanupPaths = [];
+  const cleanupPaths = files.map((file) => file.path);
   const batchId = crypto.randomUUID();
   let clientDisconnected = false;
+  let nextFileIndex = 0;
 
   res.on("close", () => {
     if (!res.writableEnded) {
@@ -84,97 +89,277 @@ app.post("/api/compress", upload.array("images"), async (req, res) => {
     total: files.length,
     quality,
     effort,
-    maxWidth: maxWidth || null
+    maxWidth: maxWidth || null,
+    compressConcurrency,
+    baseIndex,
+    batchNumber,
+    totalBatches
   });
 
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      if (clientDisconnected) break;
+  const processFile = async (index) => {
+    if (clientDisconnected) return;
 
-      const file = files[index];
-      cleanupPaths.push(file.path);
-      const originalName = file.originalname;
-      const ext = path.extname(originalName).toLowerCase();
+    const file = files[index];
+    const publicIndex = baseIndex + index;
+    const originalName = normalizeUploadName(file.originalname);
+    const ext = path.extname(originalName).toLowerCase();
 
+    send({
+      type: "file-start",
+      index: publicIndex,
+      total: files.length,
+      name: originalName,
+      originalBytes: file.size
+    });
+
+    if (!imageExtensions.has(ext)) {
       send({
-        type: "file-start",
-        index,
-        total: files.length,
+        type: "file-skip",
+        index: publicIndex,
         name: originalName,
-        originalBytes: file.size
+        reason: `不支持的格式: ${ext || "(无扩展名)"}`
+      });
+      return;
+    }
+
+    try {
+      const compressed = await compressToWebp({
+        inputPath: file.path,
+        quality,
+        effort,
+        maxWidth
       });
 
-      if (!imageExtensions.has(ext)) {
-        send({
-          type: "file-skip",
-          index,
-          name: originalName,
-          reason: `不支持的格式: ${ext || "(无扩展名)"}`
-        });
-        continue;
-      }
+      const md5 = crypto.createHash("md5").update(compressed.data).digest("hex");
+      const now = new Date();
+      const year = String(now.getFullYear());
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
 
-      try {
-        const compressed = await compressToWebp({
-          inputPath: file.path,
-          quality,
-          effort,
-          maxWidth
-        });
+      const relPath = `${batchId}/${year}/${month}/${day}/${publicIndex}-${md5}.webp`;
+      const outputPath = path.join(
+        OUTPUT_DIR,
+        batchId,
+        year,
+        month,
+        day,
+        `${publicIndex}-${md5}.webp`
+      );
 
-        const md5 = crypto.createHash("md5").update(compressed.data).digest("hex");
-        const now = new Date();
-        const year = String(now.getFullYear());
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const day = String(now.getDate()).padStart(2, "0");
-        
-        const relPath = `${batchId}/${year}/${month}/${day}/${index}-${md5}.webp`;
-        const outputPath = path.join(
-          OUTPUT_DIR,
-          batchId,
-          year,
-          month,
-          day,
-          `${index}-${md5}.webp`
-        );
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.writeFile(outputPath, compressed.data);
 
-        await fs.mkdir(path.dirname(outputPath), { recursive: true });
-        await fs.writeFile(outputPath, compressed.data);
+      send({
+        type: "compressed",
+        index: publicIndex,
+        name: originalName,
+        outputName: relPath,
+        previewUrl: `/preview/${relPath}`,
+        fileId: relPath,
+        originalBytes: file.size,
+        compressedBytes: compressed.bytes,
+        savedPercent: percentageSaved(file.size, compressed.bytes),
+        width: compressed.width,
+        height: compressed.height
+      });
 
-        send({
-          type: "compressed",
-          index,
-          name: originalName,
-          outputName: relPath,
-          previewUrl: `/preview/${relPath}`,
-          fileId: relPath,
-          originalBytes: file.size,
-          compressedBytes: compressed.bytes,
-          savedPercent: percentageSaved(file.size, compressed.bytes),
-          width: compressed.width,
-          height: compressed.height
-        });
-
-        send({
-          type: "file-done",
-          index,
-          name: originalName
-        });
-      } catch (error) {
-        send({
-          type: "file-error",
-          index,
-          name: originalName,
-          message: error instanceof Error ? error.message : String(error)
-        });
-      }
+      send({
+        type: "file-done",
+        index: publicIndex,
+        name: originalName
+      });
+    } catch (error) {
+      send({
+        type: "file-error",
+        index: publicIndex,
+        name: originalName,
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
+  };
+
+  const runWorker = async () => {
+    while (!clientDisconnected && nextFileIndex < files.length) {
+      const index = nextFileIndex;
+      nextFileIndex += 1;
+      await processFile(index);
+    }
+  };
+
+  try {
+    const workers = Array.from(
+      { length: Math.min(compressConcurrency, files.length) },
+      () => runWorker()
+    );
+    await Promise.all(workers);
 
     send({
       type: "done"
     });
   } finally {
     await cleanupFiles(cleanupPaths);
+    res.end();
+  }
+});
+
+app.post("/api/compress-directory", async (req, res) => {
+  const directory = typeof req.body.directory === "string"
+    ? path.resolve(req.body.directory)
+    : "";
+
+  if (!directory) {
+    return res.status(400).json({ error: "目录路径不能为空" });
+  }
+
+  let stat;
+  try {
+    stat = await fs.stat(directory);
+  } catch {
+    return res.status(400).json({ error: "目录不存在或无法访问" });
+  }
+
+  if (!stat.isDirectory()) {
+    return res.status(400).json({ error: "路径不是目录" });
+  }
+
+  const files = await walkFiles(directory);
+  if (files.length > 2000) {
+    return res.status(400).json({ error: "目录文件过多，请先拆分到 2000 个以内" });
+  }
+
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  const quality = clampNumber(req.body.quality, 1, 100, 82);
+  const effort = clampNumber(req.body.effort, 0, 6, 6);
+  const maxWidth = clampNumber(req.body.maxWidth, 0, 20000, 0);
+  const compressConcurrency = clampNumber(req.body.compressConcurrency, 1, 64, 8);
+  const batchId = crypto.randomUUID();
+  let clientDisconnected = false;
+  let nextFileIndex = 0;
+
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientDisconnected = true;
+    }
+  });
+
+  const send = (event) => {
+    if (clientDisconnected) return;
+    try {
+      res.write(`${JSON.stringify(event)}\n`);
+    } catch {
+      clientDisconnected = true;
+    }
+  };
+
+  send({
+    type: "start",
+    total: files.length,
+    quality,
+    effort,
+    maxWidth: maxWidth || null,
+    compressConcurrency,
+    source: "directory"
+  });
+
+  const processFile = async (index) => {
+    if (clientDisconnected) return;
+
+    const file = files[index];
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    send({
+      type: "file-start",
+      index,
+      total: files.length,
+      name: file.originalname,
+      originalBytes: file.size
+    });
+
+    if (!imageExtensions.has(ext)) {
+      send({
+        type: "file-skip",
+        index,
+        name: file.originalname,
+        reason: `不支持的格式: ${ext || "(无扩展名)"}`
+      });
+      return;
+    }
+
+    try {
+      const compressed = await compressToWebp({
+        inputPath: file.path,
+        quality,
+        effort,
+        maxWidth
+      });
+
+      const md5 = crypto.createHash("md5").update(compressed.data).digest("hex");
+      const now = new Date();
+      const year = String(now.getFullYear());
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      const relPath = `${batchId}/${year}/${month}/${day}/${index}-${md5}.webp`;
+      const outputPath = path.join(
+        OUTPUT_DIR,
+        batchId,
+        year,
+        month,
+        day,
+        `${index}-${md5}.webp`
+      );
+
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.writeFile(outputPath, compressed.data);
+
+      send({
+        type: "compressed",
+        index,
+        name: file.originalname,
+        outputName: relPath,
+        previewUrl: `/preview/${relPath}`,
+        fileId: relPath,
+        originalBytes: file.size,
+        compressedBytes: compressed.bytes,
+        savedPercent: percentageSaved(file.size, compressed.bytes),
+        width: compressed.width,
+        height: compressed.height
+      });
+
+      send({
+        type: "file-done",
+        index,
+        name: file.originalname
+      });
+    } catch (error) {
+      send({
+        type: "file-error",
+        index,
+        name: file.originalname,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  };
+
+  const runWorker = async () => {
+    while (!clientDisconnected && nextFileIndex < files.length) {
+      const index = nextFileIndex;
+      nextFileIndex += 1;
+      await processFile(index);
+    }
+  };
+
+  try {
+    const workers = Array.from(
+      { length: Math.min(compressConcurrency, files.length) },
+      () => runWorker()
+    );
+    await Promise.all(workers);
+
+    send({ type: "done" });
+  } finally {
     res.end();
   }
 });
@@ -367,6 +552,15 @@ function resolveOutputFile(fileId) {
   return resolved;
 }
 
+function normalizeUploadName(name) {
+  try {
+    const decoded = Buffer.from(name, "latin1").toString("utf8");
+    return decoded.includes("\uFFFD") ? name : decoded;
+  } catch {
+    return name;
+  }
+}
+
 async function cleanupDirectory(dir) {
   await fs.rm(dir, { recursive: true, force: true });
   await fs.mkdir(dir, { recursive: true });
@@ -394,6 +588,37 @@ async function cleanupEmptyParents(startDir, stopDir) {
     }
     current = path.dirname(current);
   }
+}
+
+async function walkFiles(rootDir) {
+  const root = path.resolve(rootDir);
+  const files = [];
+
+  async function visit(currentDir) {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        await visit(fullPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const stat = await fs.stat(fullPath);
+      const relativeName = path.relative(root, fullPath).split(path.sep).join("/");
+      files.push({
+        path: fullPath,
+        originalname: relativeName,
+        size: stat.size
+      });
+    }
+  }
+
+  await visit(root);
+  return files;
 }
 
 function clampNumber(value, min, max, fallback) {

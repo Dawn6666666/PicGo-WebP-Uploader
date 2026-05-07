@@ -80,6 +80,14 @@
         <div id="dropzonePreview" class="dropzone-preview" style="display: none;"></div>
       </label>
 
+      <div class="local-path-row">
+        <input id="localDirectoryPath" type="text" value="D:\Code\Blog\MyBlog\public\images\albums\AcgExample"
+          placeholder="输入本机目录路径，后端直接读取，适合大批量相册" />
+        <button id="compressDirectoryBtn" class="btn btn-ghost" type="button">
+          压缩本地目录
+        </button>
+      </div>
+
       <div class="controls">
         <label class="control-group">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -99,6 +107,28 @@
         <label class="control-group">
           <span class="control-label">压缩努力度 <strong id="effortLabel">6</strong></span>
           <input id="effort" type="range" min="0" max="6" value="6" />
+        </label>
+
+        <label class="control-group">
+          <span class="control-label">压缩并发</span>
+          <select id="compressConcurrency">
+            <option value="4">4 - 稳定</option>
+            <option value="8" selected>8 - 快速</option>
+            <option value="12">12 - 高速</option>
+            <option value="16">16 - 激进</option>
+            <option value="24">24 - 极限</option>
+          </select>
+        </label>
+
+        <label class="control-group">
+          <span class="control-label">请求分批</span>
+          <select id="compressBatchSize">
+            <option value="0" selected>不分批</option>
+            <option value="10">10 MB</option>
+            <option value="25">25 MB</option>
+            <option value="50">50 MB</option>
+            <option value="100">100 MB</option>
+          </select>
         </label>
 
         <label class="control-group">
