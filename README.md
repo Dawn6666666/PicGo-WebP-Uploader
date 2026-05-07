@@ -16,22 +16,22 @@
 
 ```mermaid
 flowchart TD
-  A[浏览器页面] --> B{输入来源}
-  B -->|选择/拖拽/粘贴文件| C[前端生成轻量缩略图]
-  B -->|本地目录路径| D[/api/compress-directory]
-  C --> E[/api/compress]
-  E --> F[Express 接收 FormData]
-  D --> G[后端扫描本地目录]
-  F --> H[Sharp 并发压缩]
+  A["浏览器页面"] --> B{"输入来源"}
+  B -->|"选择 / 拖拽 / 粘贴文件"| C["前端生成轻量缩略图"]
+  B -->|"本地目录路径"| D["POST /api/compress-directory"]
+  C --> E["POST /api/compress"]
+  E --> F["Express 接收 FormData"]
+  D --> G["后端扫描本地目录"]
+  F --> H["Sharp 并发压缩"]
   G --> H
-  H --> I[计算压缩内容 MD5]
-  I --> J[tmp/output/{batchId}/{yyyy}/{mm}/{dd}/{index}-{md5}.webp]
-  J --> K[/preview 静态预览]
+  H --> I["计算压缩内容 MD5"]
+  I --> J["写入 tmp/output 批次目录"]
+  J --> K["GET /preview 静态预览"]
   K --> A
-  A -->|单张或批量上传| L[/api/upload-picgo]
-  L --> M[PicGo CLI]
-  M --> N[图床/R2]
-  N --> O[返回最终 URL]
+  A -->|"单张或批量上传"| L["POST /api/upload-picgo"]
+  L --> M["PicGo CLI"]
+  M --> N["图床 / R2"]
+  N --> O["返回最终 URL"]
   O --> A
 ```
 
