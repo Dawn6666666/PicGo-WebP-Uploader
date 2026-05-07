@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PicGo WebP Uploader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+
+<body>
+  <!-- full-window drag overlay -->
+  <div id="dragOverlay" class="drag-overlay" aria-hidden="true">
+    <div class="drag-overlay-inner">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" />
+        <line x1="12" y1="3" x2="12" y2="15" />
+      </svg>
+      <span>松开鼠标，上传图片</span>
+    </div>
+  </div>
+
+  <main class="shell">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <div class="logo-icon">W</div>
+        </div>
+        <div>
+          <h1>WebP Uploader</h1>
+          <p id="health" class="health-text">检查 PicGo…</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="themeToggleBtn" class="btn btn-icon" type="button" title="切换亮/暗色主题">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Upload Panel -->
+    <section class="card upload-panel">
+      <label class="dropzone" id="dropzone" for="fileInput">
+        <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/tiff" multiple />
+        <div id="dropzoneContent" class="dropzone-content">
+          <div class="dropzone-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </div>
+          <span class="dropzone-title">拖拽、粘贴或点击选择图片</span>
+          <small class="dropzone-hint">支持 JPG / PNG / WebP / AVIF / TIFF，多选；动图不处理</small>
+        </div>
+        <div id="dropzonePreview" class="dropzone-preview" style="display: none;"></div>
+      </label>
+
+      <div class="controls">
+        <label class="control-group">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="control-label">WebP 质量 <strong id="qualityLabel">82</strong></span>
+            <select id="qualityPreset"
+              style="height: 28px; padding: 0 8px; font-size: 12px; border-radius: 4px; width: auto; font-family: var(--font-sans); color: var(--text-2); background: var(--bg-card); border: 1px solid var(--border-hover);">
+              <option value="75">极限</option>
+              <option value="82" selected>常规</option>
+              <option value="88">高清</option>
+              <option value="100">最高质量</option>
+              <option value="" hidden>自定义</option>
+            </select>
+          </div>
+          <input id="quality" type="range" min="1" max="100" value="82" />
+        </label>
+
+        <label class="control-group">
+          <span class="control-label">压缩努力度 <strong id="effortLabel">6</strong></span>
+          <input id="effort" type="range" min="0" max="6" value="6" />
+        </label>
+
+        <label class="control-group">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="control-label">最大宽度 (px)</span>
+            <select id="widthPreset"
+              style="height: 28px; padding: 0 8px; font-size: 12px; border-radius: 4px; width: auto; font-family: var(--font-sans); color: var(--text-2); background: var(--bg-card); border: 1px solid var(--border-hover);">
+              <option value="0">不限制</option>
+              <option value="800">800</option>
+              <option value="1280">1280</option>
+              <option value="1920">1920</option>
+              <option value="2560">2560</option>
+              <option value="3840">3840</option>
+              <option value="" hidden>自定义</option>
+            </select>
+          </div>
+          <input id="maxWidth" type="number" min="0" max="20000" step="1" value="0" placeholder="0 = 不限制" />
+        </label>
+
+        <label class="control-group">
+          <span class="control-label">上传并发</span>
+          <select id="uploadConcurrency">
+            <option value="1">1 - 稳定</option>
+            <option value="2">2 - 均衡</option>
+            <option value="3">3 - 快速</option>
+            <option value="5" selected>5 - 高速</option>
+            <option value="8">8 - 激进</option>
+            <option value="10">10 - 极限</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="uploadBtn" class="btn btn-primary" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            <line x1="11" y1="8" x2="11" y2="14"></line>
+            <line x1="8" y1="11" x2="14" y2="11"></line>
+          </svg>
+          压缩并预览
+        </button>
+        <button id="uploadAllBtn" class="btn btn-ghost" type="button" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          上传全部就绪图片
+        </button>
+        <span id="summary" class="summary-text">未选择文件</span>
+      </div>
+    </section>
+
+    <!-- Progress & Results -->
+    <section class="card results-panel" id="resultsPanel" style="display: none;">
+      <div class="results-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border-light); padding-bottom: 12px;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-1); font-family: var(--font-sans);">处理面板</h3>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <div class="copy-group" style="display: flex; align-items: center; gap: 4px;">
+            <select id="copyFormat" class="copy-select" style="height: 32px; padding: 0 8px; font-size: 13px; border-radius: 4px; background: transparent; color: var(--text-2); border: 1px solid transparent; cursor: pointer; transition: all var(--transition);">
+              <option value="markdown">Markdown (![名](链))</option>
+              <option value="url">原始链接 (https://...)</option>
+              <option value="bbcode">论坛代码 ([img]链[/img])</option>
+              <option value="html">网页标签 (&lt;img src...&gt;)</option>
+            </select>
+            <button id="copyAllBtn" class="btn btn-ghost btn-sm" type="button" title="一键复制" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+              </svg>
+              <span class="btn-text">复制全部</span>
+            </button>
+          </div>
+          <button id="clearBtn" class="btn btn-ghost btn-sm" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            <span class="btn-text">清空</span>
+          </button>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+      <div id="results" class="results"></div>
+    </section>
+  </main>
+
+  <!-- Toast container -->
+  <div id="toasts" class="toasts"></div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+
+</html>
