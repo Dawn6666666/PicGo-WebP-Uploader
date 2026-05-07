@@ -35,6 +35,47 @@ flowchart TD
   O --> A
 ```
 
+## 处理时序
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as 用户
+  participant UI as 浏览器页面
+  participant API as Express API
+  participant Sharp as Sharp 压缩
+  participant Temp as tmp/output
+  participant PicGo as PicGo CLI
+  participant Store as 图床 / R2
+
+  User->>UI: 选择图片或输入本机目录
+  alt 选择图片
+    UI->>UI: 生成轻量缩略图
+    UI->>API: POST /api/compress
+  else 本地目录直读
+    UI->>API: POST /api/compress-directory
+    API->>API: 扫描本机目录
+  end
+
+  API->>Sharp: 并发转换为 WebP
+  Sharp-->>API: WebP buffer 与图片信息
+  API->>API: 计算压缩内容 MD5
+  API->>Temp: 写入批次隔离的预览文件
+  API-->>UI: NDJSON 进度与 previewUrl
+  UI->>Temp: GET /preview/...
+  Temp-->>UI: 返回压缩后预览图
+
+  User->>UI: 单张上传或上传全部
+  UI->>API: POST /api/upload-picgo
+  API->>Temp: 读取压缩后的 WebP
+  API->>PicGo: picgo upload filePath
+  PicGo->>Store: 上传到图床
+  Store-->>PicGo: 返回最终 URL
+  PicGo-->>API: 输出上传日志和 URL
+  API-->>UI: NDJSON 上传结果
+  UI->>UI: 更新链接并支持复制
+```
+
 ### 路径说明
 
 压缩预览文件会写入本地临时目录：
