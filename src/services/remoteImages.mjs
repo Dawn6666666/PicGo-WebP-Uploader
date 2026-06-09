@@ -71,21 +71,33 @@ export function createRemoteImageService({
   async function downloadOne(inputUrl, index, jobDir) {
     try {
       const url = parseImageUrl(inputUrl);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-
       let response;
-      try {
-        response = await fetch(url, {
-          redirect: "follow",
-          signal: controller.signal
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+      const maxRetries = 5;
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          response = await fetch(url, {
+            redirect: "follow",
+            signal: controller.signal,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          });
+          clearTimeout(timer);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          break;
+        } catch (error) {
+          clearTimeout(timer);
+          if (attempt === maxRetries) {
+            throw error;
+          }
+          console.warn(`[RemoteImageService] 下载 ${url} 失败（第 ${attempt} 次尝试）: ${error.message}，准备重试...`);
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
 
       const contentLength = Number(response.headers.get("content-length"));
