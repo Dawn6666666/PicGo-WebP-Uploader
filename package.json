@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "dev": "node server.mjs"
+    "dev": "node server.mjs",
+    "cli": "node cli.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",

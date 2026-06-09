@@ -186,6 +186,188 @@ D:\Code\Blog\MyBlog\public\images\albums\AcgExample
 | `/api/upload-picgo` | `POST` | 根据压缩结果 `fileId` 调用 PicGo 上传 |
 | `/api/cleanup` | `POST` | 清理压缩预览输出目录 |
 
+### CLI / AI 优化 API
+
+这组接口面向 PowerShell、curl、脚本和 AI Agent 调用，返回普通 JSON，避免命令行工具解析 NDJSON 事件流。流程固定为两步：
+
+1. 压缩图片并拿到 `jobId`、`fileId`、压缩体积和本地预览地址。
+2. 用户或 AI 检查结果后，显式传入 `confirm: true` 才会上传到 PicGo。
+
+| 接口 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/cli/compress-directory` | `POST` | 压缩本机目录，返回完整 JSON 清单 |
+| `/api/cli/compress` | `POST` | 接收 `multipart/form-data` 图片，或接收 JSON 本地文件路径数组并压缩，返回完整 JSON 清单 |
+| `/api/cli/compress-urls` | `POST` | 下载远程图片 URL 到临时目录后压缩，返回完整 JSON 清单 |
+| `/api/cli/upload` | `POST` | 上传指定 `fileIds` 或整个 `jobId`，必须传 `confirm: true` |
+
+#### 压缩本机目录
+
+PowerShell:
+
+```powershell
+$body = @{
+  directory = "D:\Code\Blog\MyBlog\public\images\albums\AcgExample"
+  quality = 82
+  effort = 6
+  maxWidth = 0
+  compressConcurrency = 8
+} | ConvertTo-Json
+
+$result = Invoke-RestMethod `
+  -Uri "http://localhost:5177/api/cli/compress-directory" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+
+$result.items | Select-Object index,name,originalBytes,compressedBytes,savedPercent,fileId
+```
+
+curl:
+
+```bash
+curl -X POST http://localhost:5177/api/cli/compress-directory \
+  -H "Content-Type: application/json" \
+  -d '{"directory":"D:\\Code\\Blog\\MyBlog\\public\\images\\albums\\AcgExample","quality":82,"effort":6,"maxWidth":0,"compressConcurrency":8}'
+```
+
+响应结构示例：
+
+```json
+{
+  "ok": true,
+  "jobId": "0fb5fbf9-35bb-4ac2-9398-2cc1f8f191e5",
+  "source": "directory",
+  "total": 2,
+  "compressed": 2,
+  "skipped": 0,
+  "failed": 0,
+  "originalBytes": 10485760,
+  "compressedBytes": 3145728,
+  "savedPercent": 70,
+  "items": [
+    {
+      "ok": true,
+      "index": 0,
+      "name": "cover.png",
+      "fileId": "0fb5fbf9-35bb-4ac2-9398-2cc1f8f191e5/2026/06/09/0-a1b2.webp",
+      "previewUrl": "/preview/0fb5fbf9-35bb-4ac2-9398-2cc1f8f191e5/2026/06/09/0-a1b2.webp",
+      "compressedBytes": 1536000,
+      "savedPercent": 68.5,
+      "width": 1920,
+      "height": 1080
+    }
+  ]
+}
+```
+
+#### 压缩命令行上传的文件
+
+PowerShell:
+
+```powershell
+curl.exe -X POST http://localhost:5177/api/cli/compress `
+  -F "quality=82" `
+  -F "effort=6" `
+  -F "images=@D:\Pictures\a.png" `
+  -F "images=@D:\Pictures\b.jpg"
+```
+
+也可以直接传本机文件路径数组，避免把本机图片重新走一遍 HTTP 二进制上传：
+
+```powershell
+$body = @{
+  files = @(
+    "D:\Pictures\a.png",
+    "D:\Pictures\b.jpg"
+  )
+  quality = 82
+  effort = 6
+  maxWidth = 0
+  compressConcurrency = 8
+} | ConvertTo-Json
+
+$result = Invoke-RestMethod `
+  -Uri "http://localhost:5177/api/cli/compress" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+#### 压缩远程图片 URL
+
+远程 URL 会先下载到 `tmp/remote-input/{jobId}`，随后复用本地压缩流程。无论压缩成功还是下载中途失败，这批下载下来的原图临时文件都会自动清理，压缩产物仍保留在 `tmp/output`，等待确认上传。
+
+```powershell
+$body = @{
+  urls = @(
+    "https://example.com/a.jpg",
+    "https://example.com/b.png"
+  )
+  quality = 82
+  effort = 6
+  maxWidth = 0
+  downloadConcurrency = 4
+  compressConcurrency = 8
+} | ConvertTo-Json
+
+$result = Invoke-RestMethod `
+  -Uri "http://localhost:5177/api/cli/compress-urls" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+#### 确认后上传
+
+上传整个压缩批次：
+
+```powershell
+$uploadBody = @{
+  confirm = $true
+  jobId = $result.jobId
+  uploadConcurrency = 5
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "http://localhost:5177/api/cli/upload" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $uploadBody
+```
+
+只上传选中的文件：
+
+```powershell
+$selectedFileIds = @(
+  $result.items[0].fileId,
+  $result.items[1].fileId
+)
+
+$uploadBody = @{
+  confirm = $true
+  fileIds = $selectedFileIds
+  uploadConcurrency = 2
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "http://localhost:5177/api/cli/upload" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $uploadBody
+```
+
+上传响应会返回 `items` 和 `urls`。其中 `urls` 是成功上传后的最终图床链接数组，`items` 保留每张图的 `fileId`、`url`、PicGo 原始输出和错误信息。
+
+### 交互式 CLI
+
+如果你想直接在终端里一步步选参数，可以运行：
+
+```powershell
+npm run cli
+```
+
+这个模式会让你选择来源（目录、文件或远程 URL）、质量、effort、最大宽度、压缩并发和上传并发。上传成功后会自动尝试把最终 URL 复制到剪贴板，同时把完整结果保存到 `tmp/cli-results/{jobId}/result.json` 和 `urls.txt`。
+
 ## 运行时行为
 
 - 服务启动时会清理上一次残留的输入临时文件和预览输出文件。
