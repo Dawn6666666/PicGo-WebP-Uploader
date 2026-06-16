@@ -5,7 +5,8 @@ export const imageExtensions = new Set([
   ".webp",
   ".avif",
   ".tif",
-  ".tiff"
+  ".tiff",
+  ".svg"
 ]);
 
 export function clampNumber(value, min, max, fallback) {

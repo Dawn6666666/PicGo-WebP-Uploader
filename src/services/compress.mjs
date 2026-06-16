@@ -74,22 +74,41 @@ export function createCompressService({ outputDir }) {
         }
 
         try {
-          const compressed = await compressToWebp({
-            inputPath: file.path,
-            quality,
-            effort,
-            maxWidth
-          });
-          const md5 = crypto.createHash("md5").update(compressed.data).digest("hex");
+          let outputData;
+          let outputBytes;
+          let outputExt;
+          let width = null;
+          let height = null;
+
+          if (ext === ".svg") {
+            // SVG 不走 Sharp 转换，直接读取原图并输出
+            outputData = await fs.readFile(file.path);
+            outputBytes = outputData.length;
+            outputExt = ".svg";
+          } else {
+            const compressed = await compressToWebp({
+              inputPath: file.path,
+              quality,
+              effort,
+              maxWidth
+            });
+            outputData = compressed.data;
+            outputBytes = compressed.bytes;
+            outputExt = ".webp";
+            width = compressed.width;
+            height = compressed.height;
+          }
+
+          const md5 = crypto.createHash("md5").update(outputData).digest("hex");
           const now = new Date();
           const year = String(now.getFullYear());
           const month = String(now.getMonth() + 1).padStart(2, "0");
           const day = String(now.getDate()).padStart(2, "0");
-          const relPath = `${batchId}/${year}/${month}/${day}/${index}-${md5}.webp`;
-          const outputPath = path.join(outputDir, batchId, year, month, day, `${index}-${md5}.webp`);
+          const relPath = `${batchId}/${year}/${month}/${day}/${index}-${md5}${outputExt}`;
+          const outputPath = path.join(outputDir, batchId, year, month, day, `${index}-${md5}${outputExt}`);
 
           await fs.mkdir(path.dirname(outputPath), { recursive: true });
-          await fs.writeFile(outputPath, compressed.data);
+          await fs.writeFile(outputPath, outputData);
 
           items[index] = {
             ok: true,
@@ -98,10 +117,10 @@ export function createCompressService({ outputDir }) {
             fileId: relPath,
             previewUrl: `/preview/${relPath}`,
             originalBytes: file.size,
-            compressedBytes: compressed.bytes,
-            savedPercent: percentageSaved(file.size, compressed.bytes),
-            width: compressed.width,
-            height: compressed.height,
+            compressedBytes: outputBytes,
+            savedPercent: ext === ".svg" ? 0 : percentageSaved(file.size, outputBytes),
+            width,
+            height,
             md5
           };
         } catch (error) {
