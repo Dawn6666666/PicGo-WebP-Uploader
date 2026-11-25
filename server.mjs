@@ -27,7 +27,13 @@ const upload = multer({
   }
 });
 
-app.use(express.static(path.join(ROOT_DIR, "public")));
+app.use(express.static(path.join(ROOT_DIR, "public"), {
+  setHeaders(res, file) {
+    if (path.basename(file) === "material-icons-v145.woff2") {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    }
+  }
+}));
 app.use("/preview", express.static(OUTPUT_DIR, {
   setHeaders(res) { res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'"); }
 }));

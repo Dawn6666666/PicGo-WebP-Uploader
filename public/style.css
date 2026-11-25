@@ -1,3 +1,10 @@
+@font-face {
+  font-family: "Material Icons";
+  font-style: normal;
+  font-weight: 400;
+  src: url("/fonts/material-icons-v145.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light dark;
   font-family: Inter, Roboto, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
@@ -122,12 +129,11 @@ progress { width: 100%; height: 6px; display: block; margin-top: 8px; accent-col
 .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .thumb a { display: block; width: 100%; height: 100%; }
 .thumb:focus-within { outline: 2px solid var(--accent); }
-.meta, .file-link, .file-error, .logs { font-size: 13px; }
+.meta, .file-error, .logs { font-size: 13px; }
 .meta { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 10px; }
 .dimensions { white-space: nowrap; }
 .dimensions::before { content: "·"; margin-right: 8px; }
 .dimensions:empty { display: none; }
-.file-link { display: block; color: var(--accent); width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .logs summary { color: var(--muted); cursor: pointer; }
 .logs pre { max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .state { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--soft); padding: 3px 10px; border-radius: 999px; white-space: nowrap; }

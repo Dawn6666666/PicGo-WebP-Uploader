@@ -351,16 +351,11 @@ function appendLog(row, message) {
   details.hidden = false;
   details.querySelector("pre").append(document.createTextNode(message + "\n"));
 }
-function setLink(row, url, label, linkType) {
+function setLink(row, url, linkType) {
   row.url = url;
   const copy = row.el.querySelector(".copy-one");
   copy.title = "复制" + linkType;
   copy.querySelector(".sr-only").textContent = `复制 ${row.name} 的${linkType}`;
-  const link = row.el.querySelector(".file-link");
-  link.href = url;
-  link.textContent = label;
-  link.title = url;
-  link.hidden = label === "本地预览";
   const previewBtn = row.el.querySelector(".preview-one");
   if (previewBtn) {
     previewBtn.dataset.url = url;
@@ -375,6 +370,7 @@ function setLink(row, url, label, linkType) {
     const img = document.createElement("img");
     img.alt = row.name;
     img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
     imageLink.append(img);
     thumb.replaceChildren(imageLink);
   }
@@ -395,7 +391,7 @@ function compressionEvent(event) {
       `${format} · ${formatBytes(event.originalBytes)} → ${formatBytes(event.compressedBytes)}（${event.savedPercent < 0 ? "增加" : "节省"} ${Math.abs(event.savedPercent)}%）`;
     row.el.querySelector(".size").textContent = size;
     if (event.width && event.height) row.el.querySelector(".dimensions").textContent = `${event.width} × ${event.height}`;
-    setLink(row, new URL(event.previewUrl, location.origin).href, "本地预览", "本地预览链接");
+    setLink(row, new URL(event.previewUrl, location.origin).href, "本地预览链接");
     setState(row, "ready");
     progress.done++;
   } else if (["file-error", "file-skip"].includes(event.type)) {
@@ -463,7 +459,7 @@ async function uploadOne(row) {
         appendLog(row, event.message);
       } else if (event.type === "done") {
         if (!event.url) throw new Error("图床没有返回链接");
-        setLink(row, event.url, event.duplicate ? "图床链接 · 已复用" : "图床链接", "图床链接");
+        setLink(row, event.url, "图床链接");
         setState(row, "uploaded");
       }
     });
@@ -590,7 +586,7 @@ refresh();
 
 $("closePreviewBtn").addEventListener("click", () => { $("previewDialog").open = false; });
 $("results").addEventListener("click", event => {
-  const trigger = event.target.closest(".thumb a, .file-link, .preview-one");
+  const trigger = event.target.closest(".thumb a, .preview-one");
   const url = trigger?.dataset.url || trigger?.href;
   if (!trigger || !url) return;
   const row = trigger.closest(".result-row");
