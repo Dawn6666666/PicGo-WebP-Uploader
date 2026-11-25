@@ -24,7 +24,7 @@ picgo-webp "./images" --output "./图片映射.json"
 picgo-webp upload "./抓包截图.png" "./图解/栈帧.svg" --output "./图片映射.json"
 ```
 
-目录按名称排序、递归展开，忽略非图片文件。多个路径按命令行给出的顺序处理。默认质量 82、effort 6、保留分辨率，适合有小字的技术配图。
+目录按名称排序、递归展开，忽略非图片文件。多个路径按命令行给出的顺序处理。默认质量 80、effort 6、保留分辨率。带小字或细线的截图可试用质量 90。
 
 - 静态 JPEG、PNG、WebP 会试编码 WebP，只有体积变小才选用。GIF、动态 WebP 和 CLI 的 SVG 在原尺寸下原样保留。AVIF、TIFF 转为静态 WebP。
 - 用 `--max-dimension 2560` 等比限制最长边，竖图也适用。`--max-width` 可单独限制宽度，两者同时设置时满足两个上限。确实需要缩小时，即使产物稍大也采用指定尺寸。GIF 和动态 WebP 缩小时输出动态 WebP。
@@ -64,7 +64,7 @@ PicGo 的默认上传名为 `[文章前缀-]YYYY-MM-DD-原名-MD5.<实际扩展�
 | `--naming date-name` | 默认，日期、原名、MD5 |
 | `--naming name` | 原名、MD5，跨日期重跑可得到同一文件名 |
 | `--naming hash` | 仅使用 MD5，可与前缀组合 |
-| `--quality` / `--effort` | WebP 编码参数，默认 `82` / `6` |
+| `--quality` / `--effort` | WebP 编码参数，默认 `80` / `6` |
 | `--max-width` / `--max-dimension` | 最大宽度 / 最长边，默认均为 `0`，即不限 |
 | `--compress-concurrency` / `--upload-concurrency` / `--download-concurrency` | 分别默认 `8` / `5` / `4` |
 
@@ -142,6 +142,8 @@ npm start
 2. 调整 WebP 质量和最长边，点击「压缩并预览」。质量预设、压缩努力度、最大宽度、请求分批和并发数在「高级设置」中。
 3. 在「处理队列」按原文件名核对缩略图、尺寸和体积，点击单张「上传」或「上传全部」。上传失败后可在同一行重试，详细错误见「运行日志」。
 4. 选择 Markdown、URL、BBCode 或 HTML，复制单张或当前队列的全部链接。上传前链接指向本地预览，上传后切换为图床地址。Markdown 图片的替代文本（alt）默认取原文件名。
+
+网页质量预设为极省流量 50、省流量 70、均衡 80、高清 90 和最高画质 100。默认选均衡，滑块可在 1–100 之间调整。质量 100 的 WebP 编码仍为有损模式。
 
 PicGo 网页模式将 SVG 栅格化为 WebP，gallery 模式与 CLI 共用保留原图策略。
 

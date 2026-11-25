@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { DEFAULT_WEBP_QUALITY } from "./src/utils/image.mjs";
 import { namingModes } from "./src/utils/naming.mjs";
 import { DEFAULT_BACKEND } from "./src/config.mjs";
 
@@ -15,7 +16,7 @@ upload 是默认操作。本地目录递归扫描；migrate 下载并上传显�
 --prefix TEXT            PicGo 文件名前缀，例如文章 slug
 --naming MODE            PicGo 支持 date-name（默认）、name 或 hash；gallery 使用纯 MD5
 --output FILE            保存 JSON 清单，默认 tmp/cli-results/<jobId>/result.json
---quality 82             WebP 质量 (1–100)
+--quality ${DEFAULT_WEBP_QUALITY}             WebP 质量 (1–100)
 --effort 6               WebP effort (0–6)
 --max-width 0            最大像素宽度 (0–20000)，0 保留原宽
 --max-dimension 0        最长边像素 (0–20000)，0 不限制；可与宽度上限组合
@@ -30,7 +31,7 @@ gallery 读取 R2_GALLERY_URL 与 R2_GALLERY_PASSWORD 或 R2_GALLERY_TOKEN。
 清单可用 assetAlt 和 tags 单独设置新素材的图床说明与标签。`;
 
 const numberOptions = {
-  quality: ["quality", 1, 100, 82], effort: ["effort", 0, 6, 6],
+  quality: ["quality", 1, 100, DEFAULT_WEBP_QUALITY], effort: ["effort", 0, 6, 6],
   "max-width": ["maxWidth", 0, 20000, 0], "compress-concurrency": ["compressConcurrency", 1, 64, 8],
   "max-dimension": ["maxDimension", 0, 20000, 0],
   "upload-concurrency": ["uploadConcurrency", 1, 10, 5], "download-concurrency": ["downloadConcurrency", 1, 16, 4]

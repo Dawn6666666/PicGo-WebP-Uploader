@@ -1,3 +1,5 @@
+export const DEFAULT_WEBP_QUALITY = 80;
+
 export const imageExtensions = new Set([
   ".jpg",
   ".jpeg",

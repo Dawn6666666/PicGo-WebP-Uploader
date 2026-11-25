@@ -105,8 +105,8 @@
       <section class="panel settings" aria-labelledby="settings-title">
         <div class="panel-head"><h2 id="settings-title">压缩设置</h2><mdui-icon class="section-icon" name="tune"></mdui-icon></div>
         <div class="setting-body">
-          <div class="field-heading"><label id="qualityTitle" for="quality">WebP 质量</label><output id="qualityLabel" for="quality">82</output></div>
-          <mdui-slider id="quality" min="1" max="100" step="1" value="82" aria-labelledby="qualityTitle"></mdui-slider>
+          <div class="field-heading"><label id="qualityTitle" for="quality">WebP 质量</label><output id="qualityLabel" for="quality">80</output></div>
+          <mdui-slider id="quality" min="1" max="100" step="1" value="80" aria-labelledby="qualityTitle"></mdui-slider>
           <div class="scale"><span>体积更小</span><span>画质更好</span></div>
           <div class="field-block">
             <mdui-select id="dimensionPreset" variant="outlined" label="最长边" value="0">
@@ -123,11 +123,12 @@
         <details id="advanced" class="advanced">
           <summary><span>高级设置</span><mdui-icon name="expand_more"></mdui-icon></summary>
           <div class="advanced-fields">
-            <mdui-select id="qualityPreset" variant="outlined" label="质量预设" value="82">
-              <mdui-menu-item value="75">省流量 (75)</mdui-menu-item>
-              <mdui-menu-item value="82">均衡 (82)</mdui-menu-item>
-              <mdui-menu-item value="88">高画质 (88)</mdui-menu-item>
-              <mdui-menu-item value="100">无损 (100)</mdui-menu-item>
+            <mdui-select id="qualityPreset" variant="outlined" label="质量预设" value="80">
+              <mdui-menu-item value="50">极省流量 (50)</mdui-menu-item>
+              <mdui-menu-item value="70">省流量 (70)</mdui-menu-item>
+              <mdui-menu-item value="80">均衡 (80)</mdui-menu-item>
+              <mdui-menu-item value="90">高清 (90)</mdui-menu-item>
+              <mdui-menu-item value="100">最高画质 (100)</mdui-menu-item>
               <mdui-menu-item value="" disabled>自定义</mdui-menu-item>
             </mdui-select>
             <mdui-select id="effort" variant="outlined" label="压缩强度" value="6">

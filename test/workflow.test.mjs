@@ -152,6 +152,7 @@ test("web preview and JSON API preserve two-stage upload, SVG and retry", async 
   form.set("images", new Blob([svg], { type: "image/svg+xml" }), "栈帧.svg");
   const multipart = await fetch(base + "/api/compress", { method: "POST", body: form });
   const rows = (await multipart.text()).trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(rows.find(row => row.type === "start").quality, 80);
   const ready = rows.find(row => row.type === "compressed");
   assert.equal(ready.index, 17);
   assert.equal(ready.name, "栈帧.svg");
@@ -181,7 +182,7 @@ test("web preview and JSON API preserve two-stage upload, SVG and retry", async 
   assert.match(uploaded.urls[0], /\.svg$/);
   const png = path.join(dir, "线稿.png");
   await fs.writeFile(png, await paletteDiagram());
-  const kept = await (await post("cli/compress", { files: [png] })).json();
+  const kept = await (await post("cli/compress", { files: [png], quality: 100 })).json();
   assert.equal(kept.items[0].keptOriginal, true);
   const pngUpload = await (await post("cli/upload", { confirm: true, jobId: kept.jobId })).json();
   assert.equal(pngUpload.succeeded, 1);
@@ -206,12 +207,12 @@ test("choose actual output bytes, respect oriented bounds, retain vector and ani
   }
 
   const diagram = await paletteDiagram();
-  const full = await prepare(diagram, "线稿.jpg"); // Sniff the content even if the source extension is stale.
+  const full = await prepare(diagram, "线稿.jpg", { quality: 100 }); // Sniff the content even if the source extension is stale.
   assert.equal(full.keptOriginal, true);
   assert.deepEqual(full.data, diagram);
   assert.equal(full.mimeType, "image/png");
   assert.equal(full.outputName, md5(diagram) + ".png");
-  const constrained = await prepare(diagram, "diagram.png", { maxDimension: 127 });
+  const constrained = await prepare(diagram, "diagram.png", { maxDimension: 127, quality: 100 });
   assert.ok(constrained.compressedBytes > diagram.length);
   assert.deepEqual([constrained.width, constrained.height], [127, 127]);
 

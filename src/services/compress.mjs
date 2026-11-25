@@ -3,12 +3,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { mapConcurrent } from "../utils/batch.mjs";
-import { imageExtensions, outputMimeTypes, percentageSaved, clampNumber } from "../utils/image.mjs";
+import { DEFAULT_WEBP_QUALITY, imageExtensions, outputMimeTypes, percentageSaved, clampNumber } from "../utils/image.mjs";
 import { localDate, uploadName } from "../utils/naming.mjs";
 
 export function compressionOptions(options = {}) {
   return {
-    quality: clampNumber(options.quality, 1, 100, 82),
+    quality: clampNumber(options.quality, 1, 100, DEFAULT_WEBP_QUALITY),
     effort: clampNumber(options.effort, 0, 6, 6),
     maxWidth: clampNumber(options.maxWidth, 0, 20000, 0),
     maxDimension: clampNumber(options.maxDimension, 0, 20000, 0),

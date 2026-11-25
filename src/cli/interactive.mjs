@@ -9,7 +9,7 @@ import { createCompressService } from "../services/compress.mjs";
 import { createRemoteImageService } from "../services/remoteImages.mjs";
 import { createUploadService } from "../services/upload.mjs";
 import { walkFiles } from "../utils/files.mjs";
-import { clampNumber } from "../utils/image.mjs";
+import { DEFAULT_WEBP_QUALITY, clampNumber } from "../utils/image.mjs";
 import { copyTextToClipboard } from "../utils/clipboard.mjs";
 
 const scriptedAnswers = input.isTTY
@@ -91,7 +91,7 @@ try {
     console.log(`已下载 ${files.length} 个文件`);
   }
 
-  const quality = await askNumber("WebP 质量", 1, 100, 82);
+  const quality = await askNumber("WebP 质量", 1, 100, DEFAULT_WEBP_QUALITY);
   const effort = await askNumber("WebP effort", 0, 6, 6);
   const maxWidth = await askNumber("最大宽度", 0, 20000, 0);
   const compressConcurrency = await askNumber("压缩并发", 1, 64, 8);
