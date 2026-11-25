@@ -171,6 +171,7 @@ async function selectFiles(incoming, { append = false } = {}) {
       img.onerror = () => img.remove();
     }
   }
+  if (files.length && !busy()) void prepare();
   await Promise.all([thumbnailWorker(), thumbnailWorker()]);
 }
 async function createThumbnailUrl(file) {

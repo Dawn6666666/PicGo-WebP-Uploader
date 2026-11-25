@@ -11,7 +11,7 @@ picgo-webp interactive
 upload 是默认操作。本地目录递归扫描；migrate 下载并上传显式给出的图片链接。
 --input FILE             JSON 数组或 {"images":[{"source":"…","alt":"…","caption":"…","widthPercent":60,"sourcePage":"…"}]}
                          清单内相对路径以清单目录为基准；- 表示标准输入。
---backend MODE           picgo 或 gallery。配置 R2_GALLERY_URL 时默认 gallery，否则用 picgo
+--backend MODE           picgo 或 gallery。覆盖项目配置中的默认后端
 --prefix TEXT            PicGo 文件名前缀，例如文章 slug
 --naming MODE            PicGo 支持 date-name（默认）、name 或 hash；gallery 使用纯 MD5
 --output FILE            保存 JSON 清单，默认 tmp/cli-results/<jobId>/result.json

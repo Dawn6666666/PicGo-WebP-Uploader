@@ -69,8 +69,8 @@ function startPicgo(command, filePath, configPath) {
     { ...options, env, windowsVerbatimArguments: true });
 }
 
-export function createUploadService({ picgoPath, outputDir, configPath = process.env.PICGO_CONFIG, backend = "picgo" }) {
-  const gallery = backend === "gallery" ? createGalleryClient() : null;
+export function createUploadService({ picgoPath, outputDir, configPath, gallerySettings, backend = "picgo" }) {
+  const gallery = backend === "gallery" ? createGalleryClient(gallerySettings) : null;
   const pending = new Map();
   const galleryUploads = new Map();
 

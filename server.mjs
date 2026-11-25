@@ -3,7 +3,7 @@ import multer from "multer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { DEFAULT_BACKEND, INPUT_DIR, OUTPUT_DIR, PICGO_PATH, PORT, REMOTE_INPUT_DIR, ROOT_DIR } from "./src/config.mjs";
+import { DEFAULT_BACKEND, INPUT_DIR, OUTPUT_DIR, PORT, REMOTE_INPUT_DIR, ROOT_DIR, UPLOAD_SETTINGS } from "./src/config.mjs";
 import { createCompressService } from "./src/services/compress.mjs";
 import { createRemoteImageService } from "./src/services/remoteImages.mjs";
 import { createUploadService } from "./src/services/upload.mjs";
@@ -38,8 +38,8 @@ const remoteImageService = createRemoteImageService({
   inputDir: REMOTE_INPUT_DIR
 });
 const uploadService = createUploadService({
+  ...UPLOAD_SETTINGS,
   backend: DEFAULT_BACKEND,
-  picgoPath: PICGO_PATH,
   outputDir: OUTPUT_DIR
 });
 
@@ -47,7 +47,7 @@ registerRoutes(app, {
   backend: DEFAULT_BACKEND,
   upload,
   outputDir: OUTPUT_DIR,
-  picgoPath: PICGO_PATH,
+  picgoPath: UPLOAD_SETTINGS.picgoPath,
   compressService,
   remoteImageService,
   uploadService
@@ -55,7 +55,7 @@ registerRoutes(app, {
 
 const server = app.listen(PORT, "127.0.0.1", () => {
   console.log(`PicGo WebP uploader running at http://localhost:${server.address().port}`);
-  console.log(DEFAULT_BACKEND === "gallery" ? "Using R2 gallery" : `Using PicGo CLI: ${PICGO_PATH}`);
+  console.log(DEFAULT_BACKEND === "gallery" ? "Using R2 gallery" : `Using PicGo CLI: ${UPLOAD_SETTINGS.picgoPath}`);
 });
 
 server.on("error", (error) => {

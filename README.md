@@ -32,7 +32,7 @@ picgo-webp upload "./抓包截图.png" "./图解/栈帧.svg" --output "./图片�
 
 ## 直连 R2 图床管理站
 
-将 `R2_GALLERY_URL` 设为管理站的根地址，设置 `R2_GALLERY_PASSWORD` 为登录密码，或设置 `R2_GALLERY_TOKEN` 为已登录浏览器的 `auth-token` cookie 值。两者都有时优先使用 token。CLI、网页和交互模式在设置了站点地址时默认使用 gallery，其他情况默认使用 PicGo。非交互 CLI 可以用 `--backend gallery|picgo` 显式选择。
+将项目根目录的 `.env.example` 复制为 `.env`，将 `R2_GALLERY_URL` 设为管理站的根地址，设置 `R2_GALLERY_PASSWORD` 为登录密码，或设置 `R2_GALLERY_TOKEN` 为已登录浏览器的 `auth-token` cookie 值。两者都有时优先使用 token。Web、CLI 和交互模式启动时读取项目根目录的 `.env`。同名进程环境变量优先于文件中的值。`UPLOAD_BACKEND` 可设为 `gallery` 或 `picgo`。留空时，有站点地址就使用 gallery，否则使用 PicGo。非交互 CLI 的 `--backend gallery|picgo` 优先级最高。修改配置后重新启动网页服务。
 
 Linux Bash 示例，密码通过终端提示输入
 

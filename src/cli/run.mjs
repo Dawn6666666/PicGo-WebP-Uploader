@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { PICGO_PATH, TMP_DIR } from "../config.mjs";
+import { TMP_DIR, UPLOAD_SETTINGS } from "../config.mjs";
 import { createCompressService } from "../services/compress.mjs";
 import { createRemoteImageService } from "../services/remoteImages.mjs";
 import { createUploadService } from "../services/upload.mjs";
@@ -29,7 +29,7 @@ export async function runBatch(command, inputs, options) {
   await fs.mkdir(path.dirname(resultPath), { recursive: true });
   const work = await fs.mkdtemp(path.join(os.tmpdir(), "picgo-webp-"));
   try {
-    const uploader = createUploadService({ picgoPath: PICGO_PATH, outputDir: work, backend: options.backend });
+    const uploader = createUploadService({ ...UPLOAD_SETTINGS, outputDir: work, backend: options.backend });
     let files = inputs;
     if (command === "migrate") {
       const remote = createRemoteImageService({ inputDir: work, maxUrls: Infinity });

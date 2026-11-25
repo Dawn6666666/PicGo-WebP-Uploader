@@ -32,7 +32,7 @@ function uploaded(data, duplicate = false) {
 const jsonHeaders = { "Content-Type": "application/json" };
 const directPath = "/api/upload/direct";
 
-export function createGalleryClient(env = process.env) {
+export function createGalleryClient(env) {
   const base = httpUrl(env.R2_GALLERY_URL, "R2_GALLERY_URL");
   if (base.pathname !== "/" || base.search || base.hash) throw new Error("R2_GALLERY_URL 请填写图床管理站点的根地址");
   const token = env.R2_GALLERY_TOKEN;

@@ -33,7 +33,7 @@ async function fixture(t) {
   await fs.writeFile(picgo, win ? '@echo off\r\nnode "%~dp0uploader.cjs" %*\r\n'
     : '#!/usr/bin/env node\nrequire("./uploader.cjs");\n', { mode: 0o755 });
   const env = { ...process.env, PICGO_PATH: picgo, PICGO_CONFIG: "", CALLS: path.join(dir, "calls"), DENY: path.join(dir, "deny"),
-    R2_GALLERY_URL: "", R2_GALLERY_PASSWORD: "", R2_GALLERY_TOKEN: "" };
+    UPLOAD_BACKEND: "", R2_GALLERY_URL: "", R2_GALLERY_PASSWORD: "", R2_GALLERY_TOKEN: "" };
   async function run(args, stdin = "") {
     const child = spawn(process.execPath, [cli, ...args], { cwd: dir, env, stdio: "pipe" });
     child.stdin.end(stdin);

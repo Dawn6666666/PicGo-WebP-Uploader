@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { DEFAULT_BACKEND, PICGO_PATH, OUTPUT_DIR, REMOTE_INPUT_DIR, ROOT_DIR } from "../config.mjs";
+import { DEFAULT_BACKEND, OUTPUT_DIR, REMOTE_INPUT_DIR, ROOT_DIR, UPLOAD_SETTINGS } from "../config.mjs";
 import { createCompressService } from "../services/compress.mjs";
 import { createRemoteImageService } from "../services/remoteImages.mjs";
 import { createUploadService } from "../services/upload.mjs";
@@ -24,7 +24,7 @@ const remoteImageService = createRemoteImageService({
 });
 const uploadService = createUploadService({
   backend: DEFAULT_BACKEND,
-  picgoPath: PICGO_PATH,
+  ...UPLOAD_SETTINGS,
   outputDir: OUTPUT_DIR
 });
 const cliResultsDir = path.join(ROOT_DIR, "tmp", "cli-results");
