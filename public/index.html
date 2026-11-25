@@ -4,19 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script>
+    try {
+      const saved = localStorage.getItem("theme");
+      if (saved === "light" || saved === "dark") {
+        document.querySelector('meta[name="color-scheme"]').content = saved;
+        document.documentElement.classList.remove("mdui-theme-auto", "mdui-theme-light", "mdui-theme-dark");
+        document.documentElement.classList.add("mdui-theme-" + saved);
+      }
+    } catch {}
+  </script>
   <title>图片上传 · PicGo Uploader</title>
   <link rel="stylesheet" href="/vendor/mdui/mdui.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
   <header class="app-bar">
     <div class="bar-inner">
-      <div class="brand"><span class="brand-mark"><mdui-icon data-icon="collections"></mdui-icon></span>PicGo Uploader</div>
+      <div class="brand"><span class="brand-mark"><mdui-icon name="collections"></mdui-icon></span>PicGo Uploader</div>
       <div class="bar-tools">
-        <span id="health" class="backend"><mdui-icon data-icon="cloud"></mdui-icon><span>读取图床配置…</span></span>
+        <span id="health" class="backend"><mdui-icon name="cloud_queue"></mdui-icon><span>连接图床中…</span></span>
         <span class="bar-divider" aria-hidden="true"></span>
-        <mdui-button-icon id="themeToggleBtn" title="切换到深色模式"><mdui-icon data-icon="moon"></mdui-icon><span class="sr-only" id="themeActionLabel">切换到深色模式</span></mdui-button-icon>
+        <mdui-button-icon id="paletteBtn" title="更改配色"><mdui-icon name="palette"></mdui-icon><span class="sr-only">更改配色</span></mdui-button-icon>
+        <mdui-button-icon id="themeToggleBtn" title="切换到深色模式"><mdui-icon name="dark_mode"></mdui-icon><span class="sr-only" id="themeActionLabel">切换到深色模式</span></mdui-button-icon>
       </div>
     </div>
   </header>
@@ -24,100 +36,159 @@
   <main class="workspace">
     <div class="page-title">
       <h1>图片上传</h1>
-      <p>先预览压缩结果，再上传单张或整批图片。</p>
+      <p>压缩为 WebP 后预览并上传</p>
     </div>
     <div class="setup">
-      <section class="panel source" aria-labelledby="source-title">
+      <div class="main-col">
+        <section class="panel source" aria-labelledby="source-title">
         <div class="panel-head">
           <h2 id="source-title">图片来源</h2>
-          <div id="sourceMode" role="radiogroup" aria-labelledby="source-title">
-            <label for="filesMode"><input id="filesMode" type="radio" name="source" value="files" checked><span>图片文件</span></label>
-            <label for="directoryMode"><input id="directoryMode" type="radio" name="source" value="directory"><span>本机目录</span></label>
-          </div>
+          <mdui-segmented-button-group id="sourceMode" selects="single" value="files" aria-labelledby="source-title">
+            <mdui-segmented-button value="files">图片文件</mdui-segmented-button>
+            <mdui-segmented-button value="directory">本机目录</mdui-segmented-button>
+          </mdui-segmented-button-group>
         </div>
         <div id="fileSource" class="source-body">
           <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/avif,image/tiff,.avif,.tif,.tiff" multiple hidden>
-          <div id="dropzone" class="dropzone">
+          <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="选择或拖放图片">
             <div id="dropzoneContent" class="drop-content">
-              <mdui-icon class="drop-icon" data-icon="add-image"></mdui-icon>
-              <strong class="desktop-hint">将图片拖到这里</strong>
-              <span class="desktop-hint">也可以直接粘贴剪贴板中的图片</span>
+              <mdui-icon class="drop-icon" name="add_photo_alternate"></mdui-icon>
+              <strong class="desktop-hint">拖拽或粘贴图片到此处</strong>
             </div>
             <div id="selection" hidden>
               <div id="thumbnails"></div>
               <strong id="selectionSummary"></strong>
               <p id="selectionNames"></p>
             </div>
-            <mdui-button id="chooseFiles" variant="filled"><mdui-icon slot="icon" data-icon="add"></mdui-icon><span>选择图片</span></mdui-button>
+            <div class="drop-actions">
+              <mdui-button id="chooseFiles" variant="filled"><mdui-icon slot="icon" name="add"></mdui-icon><span>选择图片</span></mdui-button>
+              <mdui-button id="clearSelectionBtn" variant="text" hidden>清空</mdui-button>
+            </div>
           </div>
-          <p class="formats">支持 JPG、PNG、WebP、GIF、SVG、AVIF 和 TIFF</p>
+          <p class="formats">支持 JPG / PNG / WebP / GIF / SVG / AVIF / TIFF</p>
         </div>
         <div id="directorySource" class="source-body directory" hidden>
-          <label for="localDirectoryPath">本机目录路径</label>
-          <input id="localDirectoryPath" type="text" spellcheck="false" autocomplete="off" placeholder="输入图片所在文件夹的完整路径" aria-describedby="directoryHint">
-          <p id="directoryHint">服务将递归读取该目录及子目录，适合大批量图片。</p>
+          <mdui-text-field id="localDirectoryPath" variant="outlined" label="本机目录路径" placeholder="输入图片所在文件夹的完整路径" helper="将自动读取目录及子目录下的图片" spellcheck="false" autocomplete="off"></mdui-text-field>
         </div>
         <div class="source-actions">
           <span id="sourceStatus"></span>
-          <mdui-button id="uploadBtn" variant="filled" disabled><mdui-icon slot="icon" data-icon="compress"></mdui-icon><span>压缩并预览</span></mdui-button>
+          <mdui-button id="uploadBtn" variant="filled" disabled><mdui-icon slot="icon" name="compress"></mdui-icon><span>压缩并预览</span></mdui-button>
         </div>
-      </section>
+        </section>
+
+        <section class="panel queue" id="resultsPanel" aria-labelledby="queue-title">
+          <div class="panel-head queue-head">
+            <div class="queue-title"><h2 id="queue-title" tabindex="-1">处理队列</h2><span id="queueCount">0</span></div>
+            <div class="queue-actions" id="queueActions" hidden>
+              <mdui-button variant="text" id="clearBtn">清空</mdui-button>
+              <mdui-button variant="tonal" id="uploadAllBtn"><mdui-icon slot="icon" name="upload"></mdui-icon><span>上传全部</span></mdui-button>
+            </div>
+          </div>
+          <div class="empty" id="emptyState"><mdui-icon name="layers"></mdui-icon><p>暂无待上传图片</p></div>
+          <div id="batchProgress" hidden><div id="progressLabel"></div><mdui-linear-progress></mdui-linear-progress></div>
+          <p id="batchError" role="alert" hidden></p>
+          <div id="results"></div>
+          <div id="copyBar" class="copy-bar" hidden>
+            <span id="linkSummary"></span>
+            <div>
+              <mdui-select id="copyFormat" variant="outlined" value="markdown" aria-label="复制格式">
+                <mdui-menu-item value="markdown">Markdown</mdui-menu-item>
+                <mdui-menu-item value="url">URL</mdui-menu-item>
+                <mdui-menu-item value="bbcode">BBCode</mdui-menu-item>
+                <mdui-menu-item value="html">HTML</mdui-menu-item>
+              </mdui-select>
+              <mdui-button variant="outlined" id="copyAllBtn"><mdui-icon slot="icon" name="content_copy"></mdui-icon>复制全部</mdui-button>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <section class="panel settings" aria-labelledby="settings-title">
-        <div class="panel-head"><h2 id="settings-title">压缩设置</h2><mdui-icon class="section-icon" data-icon="tune"></mdui-icon></div>
+        <div class="panel-head"><h2 id="settings-title">压缩设置</h2><mdui-icon class="section-icon" name="tune"></mdui-icon></div>
         <div class="setting-body">
           <div class="field-heading"><label id="qualityTitle" for="quality">WebP 质量</label><output id="qualityLabel" for="quality">82</output></div>
-          <input type="range" id="quality" min="1" max="100" step="1" value="82">
-          <div class="scale"><span>更小体积</span><span>更高清晰度</span></div>
-          <div class="field-block"><label for="dimensionPreset">最长边</label>
-            <select id="dimensionPreset"><option value="0">保留原尺寸</option><option value="1280">1280 px</option><option value="1920">1920 px</option><option value="2560">2560 px</option><option value="3840">3840 px</option><option value="custom">自定义尺寸</option></select>
-            <label id="customDimension" for="maxDimension" hidden>最长边（px）<input id="maxDimension" type="number" min="1" max="20000" step="1" value="2560" required></label>
+          <mdui-slider id="quality" min="1" max="100" step="1" value="82" aria-labelledby="qualityTitle"></mdui-slider>
+          <div class="scale"><span>体积更小</span><span>画质更好</span></div>
+          <div class="field-block">
+            <mdui-select id="dimensionPreset" variant="outlined" label="最长边" value="0">
+              <mdui-menu-item value="0">原图尺寸</mdui-menu-item>
+              <mdui-menu-item value="1280">1280 px</mdui-menu-item>
+              <mdui-menu-item value="1920">1920 px</mdui-menu-item>
+              <mdui-menu-item value="2560">2560 px</mdui-menu-item>
+              <mdui-menu-item value="3840">3840 px</mdui-menu-item>
+              <mdui-menu-item value="custom">自定义尺寸</mdui-menu-item>
+            </mdui-select>
+            <mdui-text-field id="maxDimension" variant="outlined" label="最长边（px）" type="number" min="1" max="20000" step="1" value="2560" required hidden></mdui-text-field>
           </div>
         </div>
         <details id="advanced" class="advanced">
-          <summary><span>高级设置</span><mdui-icon data-icon="expand"></mdui-icon></summary>
+          <summary><span>高级设置</span><mdui-icon name="expand_more"></mdui-icon></summary>
           <div class="advanced-fields">
-            <label for="qualityPreset">质量预设<select id="qualityPreset"><option value="75">75 · 更小</option><option value="82" selected>82 · 均衡</option><option value="88">88 · 清晰</option><option value="100">100 · 最高质量</option><option value="" disabled>自定义</option></select></label>
-            <label for="effort">压缩努力度<select id="effort"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
-            <label for="maxWidth">最大宽度（px）<input id="maxWidth" type="number" min="0" max="20000" value="0" step="1" list="widths" required><datalist id="widths"><option value="0"></option><option value="800"></option><option value="1280"></option><option value="1920"></option><option value="2560"></option><option value="3840"></option></datalist></label>
-            <label for="compressBatchSize">请求分批<select id="compressBatchSize"><option value="0">不分批</option><option value="10">10 MB</option><option value="25">25 MB</option><option value="50">50 MB</option><option value="100">100 MB</option></select></label>
-            <label for="compressConcurrency">压缩并发<input id="compressConcurrency" type="number" min="1" max="64" value="8" step="1" required></label>
-            <label for="uploadConcurrency">上传并发<input id="uploadConcurrency" type="number" min="1" max="10" value="5" step="1" required></label>
+            <mdui-select id="qualityPreset" variant="outlined" label="质量预设" value="82">
+              <mdui-menu-item value="75">省流量 (75)</mdui-menu-item>
+              <mdui-menu-item value="82">均衡 (82)</mdui-menu-item>
+              <mdui-menu-item value="88">高画质 (88)</mdui-menu-item>
+              <mdui-menu-item value="100">无损 (100)</mdui-menu-item>
+              <mdui-menu-item value="" disabled>自定义</mdui-menu-item>
+            </mdui-select>
+            <mdui-select id="effort" variant="outlined" label="压缩强度" value="6">
+              <mdui-menu-item value="0">0</mdui-menu-item>
+              <mdui-menu-item value="1">1</mdui-menu-item>
+              <mdui-menu-item value="2">2</mdui-menu-item>
+              <mdui-menu-item value="3">3</mdui-menu-item>
+              <mdui-menu-item value="4">4</mdui-menu-item>
+              <mdui-menu-item value="5">5</mdui-menu-item>
+              <mdui-menu-item value="6">6</mdui-menu-item>
+            </mdui-select>
+            <mdui-text-field id="maxWidth" variant="outlined" label="最大宽度（px）" type="number" min="0" max="20000" value="0" step="1" required></mdui-text-field>
+            <mdui-select id="compressBatchSize" variant="outlined" label="分批大小" value="0">
+              <mdui-menu-item value="0">不分批</mdui-menu-item>
+              <mdui-menu-item value="10">10 MB</mdui-menu-item>
+              <mdui-menu-item value="25">25 MB</mdui-menu-item>
+              <mdui-menu-item value="50">50 MB</mdui-menu-item>
+              <mdui-menu-item value="100">100 MB</mdui-menu-item>
+            </mdui-select>
+            <mdui-text-field id="compressConcurrency" variant="outlined" label="压缩并发" type="number" min="1" max="64" value="8" step="1" required></mdui-text-field>
+            <mdui-text-field id="uploadConcurrency" variant="outlined" label="上传并发" type="number" min="1" max="10" value="5" step="1" required></mdui-text-field>
           </div>
         </details>
       </section>
     </div>
-
-    <section class="panel queue" id="resultsPanel" aria-labelledby="queue-title">
-      <div class="panel-head queue-head">
-        <div class="queue-title"><h2 id="queue-title" tabindex="-1">处理队列</h2><span id="queueCount">0</span></div>
-        <div class="queue-actions" id="queueActions" hidden>
-          <mdui-button variant="text" id="clearBtn">清空</mdui-button>
-          <mdui-button variant="tonal" id="uploadAllBtn"><mdui-icon slot="icon" data-icon="upload"></mdui-icon><span>上传全部</span></mdui-button>
-        </div>
-      </div>
-      <div class="empty" id="emptyState"><mdui-icon data-icon="layers"></mdui-icon><p>压缩后的图片会显示在这里</p></div>
-      <div id="batchProgress" hidden><div id="progressLabel"></div><progress aria-labelledby="progressLabel"></progress></div>
-      <p id="batchError" role="alert" hidden></p>
-      <div id="results"></div>
-      <div id="copyBar" class="copy-bar" hidden>
-        <span id="linkSummary"></span>
-        <div><label for="copyFormat" class="sr-only">复制格式</label><select id="copyFormat"><option value="markdown">Markdown</option><option value="url">URL</option><option value="bbcode">BBCode</option><option value="html">HTML</option></select>
-        <mdui-button variant="outlined" id="copyAllBtn"><mdui-icon slot="icon" data-icon="copy"></mdui-icon>复制全部</mdui-button></div>
-      </div>
-    </section>
   </main>
   <template id="resultTemplate">
     <article class="result-row">
-      <div class="thumb"><mdui-icon data-icon="image"></mdui-icon></div>
+      <div class="thumb"><mdui-icon name="image"></mdui-icon></div>
       <div class="file-info"><h3></h3><p class="meta"><span class="size"></span><span class="dimensions"></span></p><a class="file-link" target="_blank" rel="noopener noreferrer" hidden></a><p class="file-error" hidden></p>
         <details class="logs" hidden><summary>运行日志</summary><pre></pre></details></div>
       <span class="state"></span>
-      <div class="row-actions"><mdui-button class="upload-one" variant="text" hidden>上传</mdui-button>
-        <mdui-button-icon class="copy-one" title="复制链接" hidden><mdui-icon data-icon="copy"></mdui-icon><span class="sr-only"></span></mdui-button-icon></div>
+      <div class="row-actions"><mdui-button class="preview-one" variant="text" hidden>预览</mdui-button><mdui-button class="upload-one" variant="text" hidden>上传</mdui-button>
+        <mdui-button-icon class="copy-one" title="复制链接" hidden><mdui-icon name="content_copy"></mdui-icon><span class="sr-only"></span></mdui-button-icon></div>
     </article>
   </template>
   <div id="liveStatus" class="sr-only" role="status"></div>
+  <mdui-dialog id="paletteDialog" headline="界面配色" close-on-overlay-click>
+    <p class="palette-desc">基于 Material Design 3 动态生成整套色板</p>
+    <div id="paletteSwatches" class="palette-swatches" role="radiogroup" aria-label="预设配色">
+      <button type="button" class="swatch" data-color="#5750a3" style="--swatch:#5750a3" title="靛蓝（默认）" aria-label="靛蓝（默认）"></button>
+      <button type="button" class="swatch" data-color="#1a73e8" style="--swatch:#1a73e8" title="钴蓝" aria-label="钴蓝"></button>
+      <button type="button" class="swatch" data-color="#146c2e" style="--swatch:#146c2e" title="翠绿" aria-label="翠绿"></button>
+      <button type="button" class="swatch" data-color="#b06000" style="--swatch:#b06000" title="琥珀" aria-label="琥珀"></button>
+      <button type="button" class="swatch" data-color="#b3261e" style="--swatch:#b3261e" title="玫瑰" aria-label="玫瑰"></button>
+      <button type="button" class="swatch" data-color="#006a6a" style="--swatch:#006a6a" title="青碧" aria-label="青碧"></button>
+      <label class="swatch swatch-custom" title="自定义颜色">
+        <input id="customColorInput" type="color" value="#5750a3" aria-label="自定义配色">
+      </label>
+    </div>
+    <mdui-button slot="action" variant="text" id="resetPaletteBtn">恢复默认</mdui-button>
+    <mdui-button slot="action" variant="tonal" id="closePaletteBtn">完成</mdui-button>
+  </mdui-dialog>
+  <mdui-dialog id="previewDialog" close-on-overlay-click>
+    <div class="preview-body">
+      <img id="previewImg" alt="">
+      <p id="previewMeta" class="preview-meta"></p>
+    </div>
+    <mdui-button slot="action" variant="tonal" id="closePreviewBtn">关闭</mdui-button>
+  </mdui-dialog>
   <mdui-snackbar id="notice" placement="bottom" timeout="2400"></mdui-snackbar>
 </body>
 </html>

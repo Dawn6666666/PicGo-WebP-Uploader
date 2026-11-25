@@ -2,46 +2,55 @@ import { setColorScheme, setTheme } from "/vendor/mdui/mdui.esm.js";
 import { imageMarkdown } from "./markdown.mjs";
 
 const $ = id => document.getElementById(id);
-const icons = {
-  collections: "M22 16V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2ZM8 4h12v12H8zm1 10h10l-3.2-4-2.4 3-1.7-2.1zM2 6v14a2 2 0 0 0 2 2h14v-2H4V6z",
-  "add-image": "M19 13v6H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6zM7 17h10l-3.2-4.1-2.5 3-1.5-1.9zM18 2v3h-3v2h3v3h2V7h3V5h-3V2z",
-  image: "M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2ZM5 5h14v14H5zm1 12h12l-3.8-5-3.1 3.8-1.9-2.4z",
-  cloud: "M19.35 10.04A7.49 7.49 0 0 0 5.5 8.01 6 6 0 0 0 6 20h13a5 5 0 0 0 .35-9.96ZM19 18H6a4 4 0 0 1-.42-7.98l1.07-.11.5-.95a5.5 5.5 0 0 1 10.26 1.48l.3 1.5 1.53.1A3 3 0 0 1 19 18Z",
-  moon: "M9.4 3.2A9 9 0 1 0 20.8 14.6a7.5 7.5 0 0 1-11.4-11.4Zm-2.5 3.6a9.5 9.5 0 0 0 10.3 10.3A7 7 0 0 1 6.9 6.8Z",
-  sun: "M6.76 4.84 4.96 3.05 3.54 4.46l1.8 1.8zm-4.76 6.16h3v2H2zm9-9h2v3h-2zm9.46 2.46-1.41-1.41-1.8 1.8 1.41 1.41zM19 11h3v2h-3zm-1.76 8.16 1.8 1.8 1.41-1.42-1.8-1.8zM11 19h2v3h-2zm-7.46.54 1.42 1.42 1.8-1.8-1.42-1.42zM12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z",
-  add: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z",
-  compress: "M4 9h4.59L3 3.41 4.41 2 10 7.59V3h2v8H4zm16 6h-4.59L21 20.59 19.59 22 14 16.41V21h-2v-8h8z",
-  tune: "M3 6h4V3h2v3h12v2H9v3H7V8H3zm0 10h12v-3h2v3h4v2h-4v3h-2v-3H3z",
-  expand: "m7.41 8.59 4.59 4.58 4.59-4.58L18 10l-6 6-6-6z",
-  layers: "m12 2 10 6-10 6L2 8zm0 2.33L5.89 8 12 11.67 18.11 8zM3.94 11.5 12 16.34l8.06-4.84L22 12.66l-10 6-10-6zm0 4.33L12 20.67l8.06-4.84L22 17l-10 6-10-6z",
-  upload: "M5 17v2h14v-2h2v4H3v-4zm6-1V6.83L7.41 10.4 6 9l6-6 6 6-1.41 1.41L13 6.83V16z",
-  copy: "M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11z"
-};
 
-function drawIcon(el, name) {
-  el.setAttribute("aria-hidden", "true");
-  // All paths are static UI assets. Filenames, URLs and logs use textContent.
-  el.innerHTML = `<svg viewBox="0 0 24 24" focusable="false"><path d="${icons[name]}"></path></svg>`;
+const DEFAULT_COLOR = "#5750a3";
+function applyColorScheme(hex) {
+  const color = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : DEFAULT_COLOR;
+  setColorScheme(color, { customColors: [{ name: "success", value: "#276944" }] });
+  $("customColorInput").value = color;
+  for (const btn of $("paletteSwatches").querySelectorAll("button.swatch")) {
+    btn.setAttribute("aria-checked", String(btn.dataset.color === color));
+  }
 }
-for (const root of [document, $("resultTemplate").content]) {
-  for (const el of root.querySelectorAll("[data-icon]")) drawIcon(el, el.dataset.icon);
-}
-
-setColorScheme("#5750a3", { customColors: [{ name: "success", value: "#276944" }] });
+applyColorScheme(localStorage.getItem("colorScheme") || DEFAULT_COLOR);
+$("paletteBtn").addEventListener("click", () => { $("paletteDialog").open = true; });
+$("closePaletteBtn").addEventListener("click", () => { $("paletteDialog").open = false; });
+$("resetPaletteBtn").addEventListener("click", () => {
+  localStorage.removeItem("colorScheme");
+  applyColorScheme(DEFAULT_COLOR);
+});
+$("paletteSwatches").addEventListener("click", event => {
+  const btn = event.target.closest("button.swatch");
+  if (!btn) return;
+  localStorage.setItem("colorScheme", btn.dataset.color);
+  applyColorScheme(btn.dataset.color);
+});
+$("customColorInput").addEventListener("input", event => {
+  localStorage.setItem("colorScheme", event.target.value);
+  applyColorScheme(event.target.value);
+});
 const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 function updateTheme() {
   const saved = localStorage.getItem("theme");
   const dark = saved ? saved === "dark" : systemTheme.matches;
+  const meta = document.querySelector('meta[name="color-scheme"]');
+  if (meta) meta.content = saved === "light" || saved === "dark" ? saved : "light dark";
   setTheme(dark ? "dark" : "light");
   const label = dark ? "切换到浅色模式" : "切换到深色模式";
   $("themeActionLabel").textContent = label;
   $("themeToggleBtn").title = label;
-  drawIcon($("themeToggleBtn").querySelector("mdui-icon"), dark ? "sun" : "moon");
+  $("themeToggleBtn").querySelector("mdui-icon").name = dark ? "light_mode" : "dark_mode";
 }
 updateTheme();
 systemTheme.addEventListener("change", updateTheme);
+window.addEventListener("storage", event => {
+  if (event.key === "theme") updateTheme();
+});
 $("themeToggleBtn").addEventListener("click", () => {
-  localStorage.setItem("theme", document.documentElement.classList.contains("mdui-theme-dark") ? "light" : "dark");
+  const target = document.documentElement.classList.contains("mdui-theme-dark") ? "light" : "dark";
+  const system = systemTheme.matches ? "dark" : "light";
+  if (target === system) localStorage.removeItem("theme");
+  else localStorage.setItem("theme", target);
   updateTheme();
 });
 
@@ -74,9 +83,10 @@ function syncSource() {
   $("fileSource").hidden = directory;
   $("directorySource").hidden = !directory;
   $("chooseFiles").disabled = busy();
+  $("clearSelectionBtn").disabled = busy();
   $("fileInput").disabled = busy();
   $("localDirectoryPath").disabled = busy();
-  for (const radio of $("sourceMode").querySelectorAll("input")) radio.disabled = busy();
+  for (const btn of $("sourceMode").querySelectorAll("mdui-segmented-button")) btn.disabled = busy();
   $("uploadBtn").disabled = busy() || (directory ? !$("localDirectoryPath").value.trim() : !files.length);
 }
 $("sourceMode").addEventListener("change", event => {
@@ -85,12 +95,23 @@ $("sourceMode").addEventListener("change", event => {
   refresh();
 });
 $("chooseFiles").addEventListener("click", () => $("fileInput").click());
+$("clearSelectionBtn").addEventListener("click", () => { if (!busy()) selectFiles([]); });
 $("dropzone").addEventListener("click", event => {
-  if (!busy() && !event.composedPath().includes($("chooseFiles"))) $("fileInput").click();
+  if (!busy() && !event.composedPath().includes($("chooseFiles")) && !event.composedPath().includes($("clearSelectionBtn"))) $("fileInput").click();
+});
+$("dropzone").addEventListener("keydown", event => {
+  if (!busy() && (event.key === "Enter" || event.key === " ") && event.target === $("dropzone")) {
+    event.preventDefault();
+    $("fileInput").click();
+  }
 });
 $("localDirectoryPath").addEventListener("input", () => { syncSource(); refresh(); });
 $("localDirectoryPath").addEventListener("keydown", event => {
-  if (event.key === "Enter" && !$("uploadBtn").disabled) prepare();
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (event.isComposing || event.keyCode === 229) return;
+    if (!$("uploadBtn").disabled) prepare();
+  }
 });
 $("fileInput").addEventListener("change", () => {
   if ($("fileInput").files.length) selectFiles([...$("fileInput").files]);
@@ -103,12 +124,21 @@ function releaseSelection() {
   thumbnailUrls.length = 0;
   $("thumbnails").replaceChildren();
 }
-async function selectFiles(incoming) {
+async function selectFiles(incoming, { append = false } = {}) {
   if (busy()) return;
-  releaseSelection();
-  files = incoming;
+  let added = incoming;
+  if (append && files.length) {
+    const seen = new Set(files.map(f => `${f.name}:${f.size}:${f.lastModified}`));
+    added = incoming.filter(f => !seen.has(`${f.name}:${f.size}:${f.lastModified}`));
+    if (!added.length) { notify("这些图片已在待选列表中"); return; }
+    files = [...files, ...added];
+    selectionVersion++;
+  } else {
+    releaseSelection();
+    files = incoming;
+  }
   sourceMode = "files";
-  $("filesMode").checked = true;
+  $("sourceMode").value = "files";
   const version = selectionVersion;
   const bytes = files.reduce((sum, file) => sum + file.size, 0);
   $("dropzoneContent").hidden = !!files.length;
@@ -117,10 +147,11 @@ async function selectFiles(incoming) {
   $("selectionNames").textContent = files.slice(0, 2).map(file => file.name).join("、") + (files.length > 2 ? " 等" : "");
   $("chooseFiles").querySelector("span").textContent = files.length ? "重新选择" : "选择图片";
   $("chooseFiles").variant = files.length ? "outlined" : "filled";
+  $("clearSelectionBtn").hidden = !files.length;
   syncSource();
   refresh();
   const lightweight = files.length > 8 || bytes > 20 * 1024 * 1024;
-  const preview = files.slice(0, 12);
+  const preview = added.slice(0, Math.max(0, 12 - $("thumbnails").childElementCount));
   let next = 0;
   async function thumbnailWorker() {
     while (version === selectionVersion && next < preview.length) {
@@ -170,22 +201,26 @@ window.addEventListener("drop", event => {
   dragDepth = 0;
   $("dropzone").classList.remove("dragging");
   const images = [...event.dataTransfer.files].filter(isImage);
-  if (images.length) selectFiles(images); else notify("请选择支持的图片格式");
+  if (images.length) selectFiles(images, { append: true }); else notify("请选择支持的图片格式");
 });
 window.addEventListener("paste", event => {
   const images = [...(event.clipboardData?.files || [])].filter(isImage);
-  if (!busy() && images.length) { event.preventDefault(); selectFiles(images); }
+  if (!busy() && images.length) { event.preventDefault(); selectFiles(images, { append: true }); }
 });
 
 function syncQuality() {
-  const quality = $("quality").value;
+  const quality = String($("quality").value);
   $("qualityLabel").value = quality;
-  $("quality").style.setProperty("--fill", ((Number(quality) - 1) / 99 * 100) + "%");
-  $("qualityPreset").value = [...$("qualityPreset").options].some(option => option.value === quality) ? quality : "";
+  const presets = [...$("qualityPreset").querySelectorAll("mdui-menu-item")];
+  $("qualityPreset").value = presets.some(item => item.value === quality) ? quality : "";
 }
 $("quality").addEventListener("input", syncQuality);
-$("qualityPreset").addEventListener("change", () => { $("quality").value = $("qualityPreset").value; syncQuality(); });
-$("dimensionPreset").addEventListener("change", () => { $("customDimension").hidden = $("dimensionPreset").value !== "custom"; });
+$("qualityPreset").addEventListener("change", () => {
+  if (!$("qualityPreset").value) return;
+  $("quality").value = Number($("qualityPreset").value);
+  syncQuality();
+});
+$("dimensionPreset").addEventListener("change", () => { $("maxDimension").hidden = $("dimensionPreset").value !== "custom"; });
 document.querySelector(".settings").addEventListener("input", scheduleRefresh);
 syncQuality();
 function settings() {
@@ -291,6 +326,14 @@ function setState(row, state, error = "") {
   const status = el.querySelector(".state");
   status.textContent = stateLabels[state];
   status.dataset.state = state;
+  const thumb = el.querySelector(".thumb");
+  if (thumb && !thumb.querySelector("img")) {
+    if (state === "working" || state === "uploading") {
+      thumb.innerHTML = "<mdui-circular-progress></mdui-circular-progress>";
+    } else {
+      thumb.innerHTML = '<mdui-icon name="image"></mdui-icon>';
+    }
+  }
   const upload = el.querySelector(".upload-one");
   upload.hidden = !["ready", "retry"].includes(state);
   upload.disabled = busy();
@@ -316,7 +359,12 @@ function setLink(row, url, label, linkType) {
   link.href = url;
   link.textContent = label;
   link.title = url;
-  link.hidden = false;
+  link.hidden = label === "本地预览";
+  const previewBtn = row.el.querySelector(".preview-one");
+  if (previewBtn) {
+    previewBtn.dataset.url = url;
+    previewBtn.hidden = false;
+  }
   const thumb = row.el.querySelector(".thumb");
   let imageLink = thumb.querySelector("a");
   if (!imageLink) {
@@ -480,10 +528,13 @@ function refresh() {
   $("uploadAllBtn").hidden = !pending && !bulkUploading;
   $("copyAllBtn").variant = links.length && uploaded === links.length ? "filled" : "outlined";
   $("batchProgress").hidden = !progress;
+  $("uploadBtn").loading = compressing;
+  $("uploadAllBtn").loading = bulkUploading;
   if (progress) {
-    const bar = $("batchProgress").querySelector("progress");
-    if (progress.total) { bar.max = progress.total; bar.value = progress.done; } else bar.removeAttribute("value");
-    $("progressLabel").textContent = progress.total ? `${compressing ? "压缩图片" : progress.label} · ${progress.done} / ${progress.total}` : progress.label;
+    const bar = $("batchProgress").querySelector("mdui-linear-progress");
+    if (progress.total && progress.done > 0) { bar.max = progress.total; bar.value = progress.done; } else bar.removeAttribute("value");
+    const pct = progress.total ? ` (${Math.round(progress.done / progress.total * 100)}%)` : "";
+    $("progressLabel").textContent = progress.total ? `${compressing ? "压缩图片" : progress.label} · ${progress.done} / ${progress.total}${pct}` : progress.label;
   }
   $("copyBar").hidden = !links.length;
   const sources = [];
@@ -535,3 +586,20 @@ fetch("/api/health").then(res => res.json()).then(data => {
 }).catch(() => { $("health").querySelector("span").textContent = "图床状态未知"; });
 syncSource();
 refresh();
+
+$("closePreviewBtn").addEventListener("click", () => { $("previewDialog").open = false; });
+$("results").addEventListener("click", event => {
+  const trigger = event.target.closest(".thumb a, .file-link, .preview-one");
+  const url = trigger?.dataset.url || trigger?.href;
+  if (!trigger || !url) return;
+  const row = trigger.closest(".result-row");
+  if (!row) return;
+  event.preventDefault();
+  $("previewDialog").headline = row.querySelector("h3")?.textContent || "图片预览";
+  $("previewImg").src = url;
+  $("previewImg").alt = $("previewDialog").headline;
+  const size = row.querySelector(".size")?.textContent || "";
+  const dims = row.querySelector(".dimensions")?.textContent || "";
+  $("previewMeta").textContent = [size, dims].filter(Boolean).join(" · ");
+  $("previewDialog").open = true;
+});
