@@ -2,11 +2,18 @@ export const imageExtensions = new Set([
   ".jpg",
   ".jpeg",
   ".png",
+  ".gif",
   ".webp",
   ".avif",
   ".tif",
   ".tiff",
   ".svg"
+]);
+
+// Canonical extensions match the gallery's content-type detection.
+export const outputMimeTypes = new Map([
+  [".jpeg", "image/jpeg"], [".jpg", "image/jpeg"], [".png", "image/png"],
+  [".gif", "image/gif"], [".webp", "image/webp"], [".svg", "image/svg+xml"]
 ]);
 
 export function clampNumber(value, min, max, fallback) {

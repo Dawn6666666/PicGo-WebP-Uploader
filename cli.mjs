@@ -1,279 +1,83 @@
-import { readFileSync } from "node:fs";
-import fs from "node:fs/promises";
-import path from "node:path";
-import process from "node:process";
-import readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
-import { PICGO_PATH, OUTPUT_DIR, REMOTE_INPUT_DIR, ROOT_DIR } from "./src/config.mjs";
-import { createCompressService } from "./src/services/compress.mjs";
-import { createRemoteImageService } from "./src/services/remoteImages.mjs";
-import { createUploadService } from "./src/services/upload.mjs";
-import {
-  cleanupEmptyParents,
-  cleanupFiles,
-  resolveOutputFile,
-  walkFiles
-} from "./src/utils/files.mjs";
-import { clampNumber, normalizeUploadName } from "./src/utils/image.mjs";
-import { copyTextToClipboard } from "./src/utils/clipboard.mjs";
+#!/usr/bin/env node
+import { parseArgs } from "node:util";
+import { namingModes } from "./src/utils/naming.mjs";
+import { DEFAULT_BACKEND } from "./src/config.mjs";
 
-const scriptedAnswers = input.isTTY
-  ? null
-  : readFileSync(0, "utf8").split(/\r?\n/);
-const rl = scriptedAnswers
-  ? null
-  : readline.createInterface({ input, output });
-const compressService = createCompressService({ outputDir: OUTPUT_DIR });
-const remoteImageService = createRemoteImageService({
-  inputDir: REMOTE_INPUT_DIR
-});
-const uploadService = createUploadService({
-  picgoPath: PICGO_PATH,
-  outputDir: OUTPUT_DIR
-});
-const cliResultsDir = path.join(ROOT_DIR, "tmp", "cli-results");
+const help = `picgo-webp [upload] <图片或目录...> [选项]
+picgo-webp migrate <HTTP(S) 图片链接...> [选项]
+picgo-webp upload|migrate --input <清单.json|-> [选项]
+picgo-webp interactive
 
-await fs.mkdir(OUTPUT_DIR, { recursive: true });
-await fs.mkdir(REMOTE_INPUT_DIR, { recursive: true });
-await fs.mkdir(cliResultsDir, { recursive: true });
-let remoteBatch;
+upload 是默认操作。本地目录递归扫描；migrate 下载并上传显式给出的图片链接。
+--input FILE             JSON 数组或 {"images":[{"source":"…","alt":"…","caption":"…","widthPercent":60,"sourcePage":"…"}]}
+                         清单内相对路径以清单目录为基准；- 表示标准输入。
+--backend MODE           picgo 或 gallery。配置 R2_GALLERY_URL 时默认 gallery，否则用 picgo
+--prefix TEXT            PicGo 文件名前缀，例如文章 slug
+--naming MODE            PicGo 支持 date-name（默认）、name 或 hash；gallery 使用纯 MD5
+--output FILE            保存 JSON 清单，默认 tmp/cli-results/<jobId>/result.json
+--quality 82             WebP 质量 (1–100)
+--effort 6               WebP effort (0–6)
+--max-width 0            最大像素宽度 (0–20000)，0 保留原宽
+--max-dimension 0        最长边像素 (0–20000)，0 不限制；可与宽度上限组合
+--compress-concurrency 8 压缩并发 (1–64)
+--upload-concurrency 5   上传并发 (1–10)
+--download-concurrency 4 远程下载并发 (1–16)
+-h, --help               查看帮助
 
-try {
-  console.log("PicGo WebP CLI");
-  console.log("");
+stdout 输出 JSON。退出码 0 全部成功，1 处理或保存失败，2 参数或清单错误。
+PicGo 从 PATH 查找，也可设置 PICGO_PATH 和 PICGO_CONFIG。
+gallery 读取 R2_GALLERY_URL 与 R2_GALLERY_PASSWORD 或 R2_GALLERY_TOKEN。
+清单可用 assetAlt 和 tags 单独设置新素材的图床说明与标签。`;
 
-  const sourceType = await askChoice("来源类型", [
-    { label: "目录", value: "directory" },
-    { label: "文件", value: "files" },
-    { label: "远程 URL", value: "urls" }
-  ], "directory");
+const numberOptions = {
+  quality: ["quality", 1, 100, 82], effort: ["effort", 0, 6, 6],
+  "max-width": ["maxWidth", 0, 20000, 0], "compress-concurrency": ["compressConcurrency", 1, 64, 8],
+  "max-dimension": ["maxDimension", 0, 20000, 0],
+  "upload-concurrency": ["uploadConcurrency", 1, 10, 5], "download-concurrency": ["downloadConcurrency", 1, 16, 4]
+};
 
-  let files;
-  let sourceDirectory = "";
+async function main(argv) {
+  if ((argv.length === 1 && argv[0] === "interactive") || !argv.length) {
+    await import("./src/cli/interactive.mjs");
+    return;
+  }
+  const parameters = Object.fromEntries(["input", "output", "backend", "prefix", "naming", ...Object.keys(numberOptions)]
+    .map(key => [key, { type: "string" }]));
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true,
+    options: { ...parameters, help: { type: "boolean", short: "h" } } });
+  if (values.help) return console.log(help);
 
-  if (sourceType === "directory") {
-    sourceDirectory = await askText("目录路径");
-    const resolved = path.resolve(sourceDirectory);
-    await fs.access(resolved);
-    files = await walkFiles(resolved);
-    sourceDirectory = resolved;
-    console.log(`已扫描 ${files.length} 个文件`);
-  } else if (sourceType === "files") {
-    const rawPaths = await askText("文件路径，多个用英文逗号分隔");
-    const inputPaths = rawPaths
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    if (!inputPaths.length) {
-      throw new Error("没有提供文件路径");
+  const command = ["upload", "migrate"].includes(positionals[0]) ? positionals.shift() : "upload";
+  const backend = values.backend ?? DEFAULT_BACKEND;
+  if (!["picgo", "gallery"].includes(backend)) throw new Error("--backend 必须是 picgo 或 gallery");
+  if (backend === "gallery" && (values.prefix || (values.naming !== undefined && values.naming !== "hash"))) {
+    throw new Error("gallery 由服务端按内容命名。使用 --backend picgo 可指定 --prefix 或 --naming");
+  }
+  const options = { ...values, backend, naming: values.naming ?? (backend === "gallery" ? "hash" : "date-name") };
+  if (!namingModes.includes(options.naming)) throw new Error("未知的 --naming，请选 date-name、name 或 hash");
+  for (const [flag, [key, min, max, fallback]] of Object.entries(numberOptions)) {
+    const raw = values[flag];
+    const n = raw === undefined ? fallback : Number(raw);
+    if (raw?.trim() === "" || !Number.isInteger(n) || n < min || n > max) {
+      throw new Error(`--${flag} 必须是 ${min} 至 ${max} 的整数`);
     }
-
-    files = [];
-    for (const inputPath of inputPaths) {
-      const resolved = path.resolve(inputPath);
-      const stat = await fs.stat(resolved);
-      files.push({
-        path: resolved,
-        originalname: normalizeUploadName(path.basename(resolved)),
-        size: stat.size
-      });
-    }
-  } else {
-    const rawUrls = await askText("图片 URL，多个用英文逗号分隔");
-    const urls = rawUrls
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const downloadConcurrency = await askNumber("下载并发", 1, 16, 4);
-    console.log("");
-    console.log("开始下载远程图片...");
-    remoteBatch = await remoteImageService.downloadImagesFromUrls(urls, {
-      downloadConcurrency
-    });
-    files = remoteBatch.files;
-    console.log(`已下载 ${files.length} 个文件`);
+    options[key] = n;
   }
-
-  const quality = await askNumber("WebP 质量", 1, 100, 82);
-  const effort = await askNumber("WebP effort", 0, 6, 6);
-  const maxWidth = await askNumber("最大宽度", 0, 20000, 0);
-  const compressConcurrency = await askNumber("压缩并发", 1, 64, 8);
-  const uploadConcurrency = await askNumber("上传并发", 1, 10, 5);
-  const uploadAfterCompress = await askConfirm("压缩后立即上传", true);
-
-  console.log("");
-  console.log("开始压缩...");
-
-  const compressResult = await compressService.compressFilesToJson({
-    files,
-    quality,
-    effort,
-    maxWidth,
-    compressConcurrency,
-    source: sourceType === "urls" ? "remote-urls" : sourceType,
-    sourceDirectory: sourceType === "directory" ? sourceDirectory : undefined
-  });
-
-  printCompressionSummary(compressResult);
-
-  let uploadResult = null;
-  if (uploadAfterCompress && compressResult.compressed > 0) {
-    console.log("");
-    console.log("开始上传...");
-    const uploadFileIds = await uploadService.collectUploadFileIds({ jobId: compressResult.jobId });
-    const uploaded = await uploadByFileIds(uploadService, uploadFileIds, uploadConcurrency);
-    printUploadSummary(uploaded);
-    await persistResults({
-      compressResult,
-      uploadResult: uploaded
-    });
-
-    const urls = uploaded.urls.join("\n");
-    if (urls && copyTextToClipboard(urls)) {
-      console.log("已复制上传 URL 到剪贴板");
-    }
-  } else {
-    await persistResults({ compressResult, uploadResult: null });
-  }
-
-  console.log("");
-  console.log(`结果已保存到: ${path.join(cliResultsDir, compressResult.jobId)}`);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-} finally {
-  if (remoteBatch?.jobDir) {
-    await fs.rm(remoteBatch.jobDir, { recursive: true, force: true });
-  }
-  rl?.close();
-}
-
-async function uploadByFileIds(uploadServiceInstance, fileIds, uploadConcurrency) {
-  const items = [];
-  let nextIndex = 0;
-
-  const runWorker = async () => {
-    while (nextIndex < fileIds.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const fileId = fileIds[index];
-      const filePath = resolveOutputFile(OUTPUT_DIR, fileId);
-      const logs = [];
-
-      try {
-        await fs.access(filePath);
-        const uploadResult = await uploadServiceInstance.uploadWithPicgo(filePath, (line) => logs.push(line));
-        items[index] = {
-          ok: true,
-          fileId,
-          url: uploadResult.url,
-          raw: uploadResult.raw,
-          logs
-        };
-        await cleanupFiles([filePath]);
-        await cleanupEmptyParents(path.dirname(filePath), OUTPUT_DIR);
-      } catch (error) {
-        items[index] = {
-          ok: false,
-          fileId,
-          error: error instanceof Error ? error.message : String(error),
-          logs
-        };
-      }
-    }
-  };
-
-  await Promise.all(
-    Array.from({ length: Math.min(uploadConcurrency, fileIds.length) }, () => runWorker())
-  );
-
-  return {
-    ok: items.every((item) => item?.ok),
-    total: items.length,
-    succeeded: items.filter((item) => item?.ok).length,
-    failed: items.filter((item) => item && !item.ok).length,
-    items,
-    urls: items.filter((item) => item?.ok && item.url).map((item) => item.url)
-  };
-}
-
-async function persistResults({ compressResult, uploadResult }) {
-  const runDir = path.join(cliResultsDir, compressResult.jobId);
-  await fs.mkdir(runDir, { recursive: true });
-
-  const payload = {
-    compress: compressResult,
-    upload: uploadResult,
-    savedAt: new Date().toISOString()
-  };
-
-  await fs.writeFile(path.join(runDir, "result.json"), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  await fs.writeFile(
-    path.join(runDir, "urls.txt"),
-    `${(uploadResult?.urls ?? []).join("\n")}\n`,
-    "utf8"
-  );
-}
-
-function printCompressionSummary(result) {
-  console.log("");
-  console.log(`任务: ${result.jobId}`);
-  console.log(`总数: ${result.total}`);
-  console.log(`成功: ${result.compressed}`);
-  console.log(`跳过: ${result.skipped}`);
-  console.log(`失败: ${result.failed}`);
-  console.log(`节省: ${result.savedPercent}%`);
-}
-
-function printUploadSummary(result) {
-  console.log("");
-  console.log(`上传成功: ${result.succeeded}/${result.total}`);
-  for (const url of result.urls) {
-    console.log(url);
+  const { readInputs } = await import("./src/cli/inputs.mjs");
+  const inputs = await readInputs(positionals, options.input, command);
+  const { runBatch } = await import("./src/cli/run.mjs");
+  try {
+    const result = await runBatch(command, inputs, options);
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.ok) process.exitCode = 1;
+  } catch (error) {
+    console.log(JSON.stringify({ ok: false, error: error.message }));
+    process.exitCode = 1;
   }
 }
 
-async function prompt(question) {
-  if (scriptedAnswers) {
-    output.write(question);
-    const answer = scriptedAnswers.shift() ?? "";
-    output.write(`${answer}\n`);
-    return answer;
-  }
-
-  return rl.question(question);
-}
-
-async function askText(question, fallback = "") {
-  const answer = (await prompt(`${question}: `)).trim();
-  return answer || fallback;
-}
-
-async function askNumber(question, min, max, fallback) {
-  const answer = (await prompt(`${question} [${fallback}]: `)).trim();
-  return clampNumber(answer || fallback, min, max, fallback);
-}
-
-async function askConfirm(question, fallback = true) {
-  const suffix = fallback ? "Y/n" : "y/N";
-  const answer = (await prompt(`${question} (${suffix}): `)).trim().toLowerCase();
-  if (!answer) {
-    return fallback;
-  }
-  return ["y", "yes", "true", "1"].includes(answer);
-}
-
-async function askChoice(question, options, fallbackValue) {
-  console.log(question);
-  options.forEach((option, index) => {
-    console.log(`  ${index + 1}. ${option.label}`);
-  });
-
-  const fallbackIndex = Math.max(
-    1,
-    options.findIndex((option) => option.value === fallbackValue) + 1
-  );
-  const answer = (await prompt(`请选择 [${fallbackIndex}]: `)).trim();
-  const index = clampNumber(answer || fallbackIndex, 1, options.length, fallbackIndex) - 1;
-  return options[index].value;
+try { await main(process.argv.slice(2)); }
+catch (error) {
+  console.log(JSON.stringify({ ok: false, error: error.message }));
+  process.exitCode = 2;
 }

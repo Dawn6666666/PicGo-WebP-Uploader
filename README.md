@@ -1,385 +1,172 @@
 # PicGo WebP Uploader
 
-一个本地运行的图片压缩、预览与 PicGo 上传工具。项目使用 Node.js、Express、Sharp 和 PicGo CLI，将图片批量转换为 WebP，并在确认压缩结果后上传到已配置的图床。
+给 AI 写笔记用的批量传图工具。CLI 直接读取本机文件或目录，通过 PicGo 或自己的 R2 图床管理站上传。返回的 JSON 按正文引用顺序保存原名、来源、图床链接和 Shirone Markdown。网页支持先预览，再上传单张或整批。
 
-## 功能概览
+在 JavaGuide / 小林 coding 的学习笔记中，正文可以继续沿用原图链接。自制截图、需要放到自有 R2 的封面、需要备份的外链，可分别使用下面的上传和迁移命令。
 
-- **两阶段处理流程**：先压缩并预览，再选择单张上传或批量上传。
-- **WebP 压缩参数**：支持质量、effort、最大宽度和压缩并发配置。
-- **大文件选择优化**：大批量选择时先生成轻量缩略图，避免直接在页面中解码大体积原图。
-- **本地目录直读**：可输入本机目录路径，由后端直接扫描磁盘并压缩，避免浏览器传输和缓存整批原图。
-- **批量上传队列**：上传阶段使用可配置并发，避免一次性启动过多 PicGo 进程。
-- **链接复制**：支持 Markdown、URL、BBCode 和 HTML `<img>` 格式；压缩后可复制本地预览链接，上传后自动切换为图床 URL。
-- **临时文件隔离**：压缩产物写入独立批次目录，避免重复图片或不同压缩参数互相覆盖。
+## 安装
 
-## 架构与数据流
+Windows、Linux 均可使用。建议使用 Node.js 22.14 或更高版本。直连 R2 管理站只需要站点地址和登录凭据。选择 PicGo 后端时需要本机已配置的 PicGo CLI。在本项目目录执行
 
-```mermaid
-flowchart TD
-  A["浏览器页面"] --> B{"输入来源"}
-  B -->|"选择 / 拖拽 / 粘贴文件"| C["前端生成轻量缩略图"]
-  B -->|"本地目录路径"| D["POST /api/compress-directory"]
-  C --> E["POST /api/compress"]
-  E --> F["Express 接收 FormData"]
-  D --> G["后端扫描本地目录"]
-  F --> H["Sharp 并发压缩"]
-  G --> H
-  H --> I["计算压缩内容 MD5"]
-  I --> J["写入 tmp/output 批次目录"]
-  J --> K["GET /preview 静态预览"]
-  K --> A
-  A -->|"单张或批量上传"| L["POST /api/upload-picgo"]
-  L --> M["PicGo CLI"]
-  M --> N["图床 / R2"]
-  N --> O["返回最终 URL"]
-  O --> A
+```sh
+npm ci
+node cli.mjs --help
 ```
 
-## 处理时序
+如果机器上只有 PicGo 桌面版，可用 `npm install -g picgo` 安装 CLI，再为它配置同一个图床。Linux 上已安装较新版系统 libvips、Sharp 安装时提示编译失败，可执行 `SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm ci` 使用预编译库。
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor User as 用户
-  participant UI as 浏览器页面
-  participant API as Express API
-  participant Sharp as Sharp 压缩
-  participant Temp as tmp/output
-  participant PicGo as PicGo CLI
-  participant Store as 图床 / R2
+执行一次 `npm link`，就能在博客文章目录直接运行 `picgo-webp`。下文的 `picgo-webp` 也可以替换为 `node "/本项目的绝对路径/cli.mjs"`。两种用法都无需启动网页服务。
 
-  User->>UI: 选择图片或输入本机目录
-  alt 选择图片
-    UI->>UI: 生成轻量缩略图
-    UI->>API: POST /api/compress
-  else 本地目录直读
-    UI->>API: POST /api/compress-directory
-    API->>API: 扫描本机目录
-  end
+## 上传本地图
 
-  API->>Sharp: 并发转换为 WebP
-  Sharp-->>API: WebP buffer 与图片信息
-  API->>API: 计算压缩内容 MD5
-  API->>Temp: 写入批次隔离的预览文件
-  API-->>UI: NDJSON 进度与 previewUrl
-  UI->>Temp: GET /preview/...
-  Temp-->>UI: 返回压缩后预览图
-
-  User->>UI: 单张上传或上传全部
-  UI->>API: POST /api/upload-picgo
-  API->>Temp: 读取压缩后的 WebP
-  API->>PicGo: picgo upload filePath
-  PicGo->>Store: 上传到图床
-  Store-->>PicGo: 返回最终 URL
-  PicGo-->>API: 输出上传日志和 URL
-  API-->>UI: NDJSON 上传结果
-  UI->>UI: 更新链接并支持复制
+```sh
+picgo-webp "./images" --output "./图片映射.json"
+picgo-webp upload "./抓包截图.png" "./图解/栈帧.svg" --output "./图片映射.json"
 ```
 
-### 路径说明
+目录按名称排序、递归展开，忽略非图片文件。多个路径按命令行给出的顺序处理。默认质量 82、effort 6、保留分辨率，适合有小字的技术配图。
 
-压缩预览文件会写入本地临时目录：
+- 静态 JPEG、PNG、WebP 会试编码 WebP，只有体积变小才选用。GIF、动态 WebP 和 CLI 的 SVG 在原尺寸下原样保留。AVIF、TIFF 转为静态 WebP。
+- 用 `--max-dimension 2560` 等比限制最长边，竖图也适用。`--max-width` 可单独限制宽度，两者同时设置时满足两个上限。确实需要缩小时，即使产物稍大也采用指定尺寸。GIF 和动态 WebP 缩小时输出动态 WebP。
+- 每张图的 `mimeType`、`width`、`height`、`compressedBytes` 和 `md5` 对应最终选用的文件。`keptOriginal: true` 表示逐字节保留了原图。扩展名取实际输出格式。
 
-```text
-tmp/output/{batchId}/{yyyy}/{mm}/{dd}/{index}-{md5}.webp
-```
+## 直连 R2 图床管理站
 
-其中 `batchId` 只用于本地临时文件隔离和预览缓存隔离，不参与最终图床 URL 的生成。最终 URL 由 PicGo 及其上传插件配置决定。
+将 `R2_GALLERY_URL` 设为管理站的根地址，设置 `R2_GALLERY_PASSWORD` 为登录密码，或设置 `R2_GALLERY_TOKEN` 为已登录浏览器的 `auth-token` cookie 值。两者都有时优先使用 token。CLI、网页和交互模式在设置了站点地址时默认使用 gallery，其他情况默认使用 PicGo。非交互 CLI 可以用 `--backend gallery|picgo` 显式选择。
 
-## 安装与启动
-
-### 环境要求
-
-- Node.js 18 或更高版本
-- 已安装并配置可用的 PicGo CLI
-
-### 安装依赖
-
-```powershell
-cd D:\Code\Other\picgo-webp-uploader
-npm install
-```
-
-### 启动服务
-
-```powershell
-npm start
-```
-
-默认访问地址：
-
-```text
-http://localhost:5177
-```
-
-如果端口 `5177` 已被占用，可以临时指定其他端口：
-
-```powershell
-$env:PORT=5178; npm start
-```
-
-## 配置项
-
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `5177` | Web 服务端口 |
-| `PICGO_PATH` | `C:\nvm4w\nodejs\picgo.cmd` | PicGo CLI 可执行文件路径 |
-| `OUTPUT_DIR` | `tmp/output` | 压缩预览文件输出目录 |
-
-示例：
-
-```powershell
-$env:PICGO_PATH="D:\your\path\to\picgo.cmd"
-$env:OUTPUT_DIR="D:\temp\picgo-webp-output"
-npm start
-```
-
-### 前端控制项
-
-| 控制项 | 默认值 | 说明 |
-| --- | --- | --- |
-| WebP 质量 | `82` | Sharp WebP quality，`100` 表示最高质量，不等同于 lossless |
-| 压缩 effort | `6` | Sharp WebP effort，数值越高通常越慢、压缩更充分 |
-| 压缩并发 | `8` | 后端 Sharp 并发任务数；前端可选到 `24`，服务端最多接受 `64` |
-| 请求分批 | 不分批 | 仅在浏览器内存紧张时手动启用 |
-| 最大宽度 | `0` | `0` 表示不限制；大于 `0` 时按宽度等比缩小且不放大 |
-| 上传并发 | `5` | 批量上传 PicGo 进程并发数；前端可选到 `10` |
-
-## 使用流程
-
-### 选择文件模式
-
-1. 通过点击、拖拽或粘贴选择图片。
-2. 页面为大批量文件生成轻量缩略图，避免直接显示原图造成卡顿。
-3. 调整压缩参数。
-4. 点击“压缩并预览”。
-5. 检查压缩后大小、尺寸和预览图。
-6. 单张上传或点击“上传全部就绪图片”。
-7. 使用“复制全部”导出链接。
-
-### 本地目录模式
-
-适合处理较大的相册目录，例如：
-
-```text
-D:\Code\Blog\MyBlog\public\images\albums\AcgExample
-```
-
-使用方式：
-
-1. 在“本机目录路径”输入框中填入目录。
-2. 点击“压缩本地目录”。
-3. 后端直接读取本机磁盘文件并压缩。
-4. 预览、上传和复制链接流程与选择文件模式一致。
-
-该模式不会把原图批量加载到浏览器内存中，更适合上百 MB 的图片目录。
-
-## API 说明
-
-| 接口 | 方法 | 说明 |
-| --- | --- | --- |
-| `/api/health` | `GET` | 返回服务状态和 PicGo 路径 |
-| `/api/compress` | `POST` | 接收 `multipart/form-data` 图片并压缩，返回 NDJSON 事件流 |
-| `/api/compress-directory` | `POST` | 接收本机目录路径，后端扫描并压缩，返回 NDJSON 事件流 |
-| `/api/upload-picgo` | `POST` | 根据压缩结果 `fileId` 调用 PicGo 上传 |
-| `/api/cleanup` | `POST` | 清理压缩预览输出目录 |
-
-### CLI / AI 优化 API
-
-这组接口面向 PowerShell、curl、脚本和 AI Agent 调用，返回普通 JSON，避免命令行工具解析 NDJSON 事件流。流程固定为两步：
-
-1. 压缩图片并拿到 `jobId`、`fileId`、压缩体积和本地预览地址。
-2. 用户或 AI 检查结果后，显式传入 `confirm: true` 才会上传到 PicGo。
-
-| 接口 | 方法 | 说明 |
-| --- | --- | --- |
-| `/api/cli/compress-directory` | `POST` | 压缩本机目录，返回完整 JSON 清单 |
-| `/api/cli/compress` | `POST` | 接收 `multipart/form-data` 图片，或接收 JSON 本地文件路径数组并压缩，返回完整 JSON 清单 |
-| `/api/cli/compress-urls` | `POST` | 下载远程图片 URL 到临时目录后压缩，返回完整 JSON 清单 |
-| `/api/cli/upload` | `POST` | 上传指定 `fileIds` 或整个 `jobId`，必须传 `confirm: true` |
-
-#### 压缩本机目录
-
-PowerShell:
-
-```powershell
-$body = @{
-  directory = "D:\Code\Blog\MyBlog\public\images\albums\AcgExample"
-  quality = 82
-  effort = 6
-  maxWidth = 0
-  compressConcurrency = 8
-} | ConvertTo-Json
-
-$result = Invoke-RestMethod `
-  -Uri "http://localhost:5177/api/cli/compress-directory" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body $body
-
-$result.items | Select-Object index,name,originalBytes,compressedBytes,savedPercent,fileId
-```
-
-curl:
+Linux Bash 示例，密码通过终端提示输入
 
 ```bash
-curl -X POST http://localhost:5177/api/cli/compress-directory \
-  -H "Content-Type: application/json" \
-  -d '{"directory":"D:\\Code\\Blog\\MyBlog\\public\\images\\albums\\AcgExample","quality":82,"effort":6,"maxWidth":0,"compressConcurrency":8}'
+export R2_GALLERY_URL='https://gallery.example.org'
+read -rsp '图床密码 ' R2_GALLERY_PASSWORD && export R2_GALLERY_PASSWORD
+picgo-webp upload --input images.json --output uploaded.json
 ```
 
-响应结构示例：
+Windows PowerShell 7 示例
+
+```powershell
+$env:R2_GALLERY_URL = 'https://gallery.example.org'
+$env:R2_GALLERY_PASSWORD = Read-Host '图床密码' -MaskInput
+picgo-webp upload --input images.json --output uploaded.json
+```
+
+管理站默认按 `img/YYYY/MM/DD/<32 位小写 MD5>.<实际扩展名>` 建新对象，日期和前缀取管理站配置。CLI 对最终文件计算 MD5，先向管理站查询。命中已有内容时，沿用服务端返回的真实 `key` 和 `url`，可跨日期、跨原名、跨运行复用。新对象通过签名地址直传，并由管理站确认。管理站在预检时声明需要回退或返回 404，工具会改走该站的表单上传，此时服务端收到文件后再查重。鉴权、直传或最终确认失败会在清单中标明阶段。
+
+`duplicate` 为 `true` 表示复用了已有对象或本批前一个条目的上传结果。同图在清单中出现多次，管理站保存首次上传的原名。每条正文引用仍分别保存自己的原名、出处和图注。
+
+## PicGo 命名与通用参数
+
+PicGo 的默认上传名为 `[文章前缀-]YYYY-MM-DD-原名-MD5.<实际扩展名>`，日期取批次开始时的本机日期。前缀和原名保留中文、字母与数字，空格及路径分隔符等会归一化为短横线。MD5 取**实际上传的文件内容**，共 32 位。
+
+| 参数 | 用途 |
+| --- | --- |
+| `--prefix java-basis-04` | PicGo 文件名前缀，可用文章 slug 分组 |
+| `--naming date-name` | 默认，日期、原名、MD5 |
+| `--naming name` | 原名、MD5，跨日期重跑可得到同一文件名 |
+| `--naming hash` | 仅使用 MD5，可与前缀组合 |
+| `--quality` / `--effort` | WebP 编码参数，默认 `82` / `6` |
+| `--max-width` / `--max-dimension` | 最大宽度 / 最长边，默认均为 `0`，即不限 |
+| `--compress-concurrency` / `--upload-concurrency` / `--download-concurrency` | 分别默认 `8` / `5` / `4` |
+
+PicGo 在同一 CLI 批次内对相同上传名只传一次，跨批次会重新调用 PicGo。对象目录、域名及插件启用的二次重命名由图床配置决定。正文使用返回的 `url`。例如 `picgo-webp ./images --backend picgo --prefix java-basis-04`。
+
+## 迁移指定外链
+
+```sh
+picgo-webp migrate "https://example.org/images/stack.png?v=2" --output migrated.json
+```
+
+`migrate` 接收图片直链。每条结果都保留输入的完整 URL（含查询参数），下载临时文件在本次命令结束时清理。个别链接失效时，其余图片继续上传。工具只处理显式提供的来源，正文编辑由写作端完成。
+
+## 给 AI 的图片清单
+
+图片在文章中已经有描述、图注、宽度或出处时，把这些信息随图传入。将以下内容保存为文章目录下的 `images.json`：
 
 ```json
 {
-  "ok": true,
-  "jobId": "0fb5fbf9-35bb-4ac2-9398-2cc1f8f191e5",
-  "source": "directory",
-  "total": 2,
-  "compressed": 2,
-  "skipped": 0,
-  "failed": 0,
-  "originalBytes": 10485760,
-  "compressedBytes": 3145728,
-  "savedPercent": 70,
-  "items": [
+  "images": [
     {
-      "ok": true,
-      "index": 0,
-      "name": "cover.png",
-      "fileId": "0fb5fbf9-35bb-4ac2-9398-2cc1f8f191e5/2026/06/09/0-a1b2.webp",
-      "previewUrl": "/preview/0fb5fbf9-35bb-4ac2-9398-2cc1f8f191e5/2026/06/09/0-a1b2.webp",
-      "compressedBytes": 1536000,
-      "savedPercent": 68.5,
-      "width": 1920,
-      "height": 1080
+      "source": "./实验截图/栈帧.png",
+      "alt": "调用前后的两个栈帧",
+      "caption": "形参和实参中的引用指向同一个对象",
+      "widthPercent": 60
     }
   ]
 }
 ```
 
-#### 压缩命令行上传的文件
-
-PowerShell:
-
-```powershell
-curl.exe -X POST http://localhost:5177/api/cli/compress `
-  -F "quality=82" `
-  -F "effort=6" `
-  -F "images=@D:\Pictures\a.png" `
-  -F "images=@D:\Pictures\b.jpg"
+```sh
+picgo-webp upload --input images.json --output uploaded.json
 ```
 
-也可以直接传本机文件路径数组，避免把本机图片重新走一遍 HTTP 二进制上传：
+远程清单将 `source` 换成图片 URL，运行 `picgo-webp migrate --input images.json`。可选字段 `sourcePage` 保存来源**文章**的 HTTP(S) 地址，方便 AI 核对上下文或署名。`--input -` 从标准输入读取相同的 JSON。文件清单的相对路径以清单所在目录为基准，标准输入及位置参数以调用目录为基准。
 
-```powershell
-$body = @{
-  files = @(
-    "D:\Pictures\a.png",
-    "D:\Pictures\b.jpg"
-  )
-  quality = 82
-  effort = 6
-  maxWidth = 0
-  compressConcurrency = 8
-} | ConvertTo-Json
+还可以在同一张图的第一个条目里给出 `"assetAlt": "JVM 栈帧结构", "tags": ["JVM", "运行时数据区"]`。gallery 只在新建素材后写入这些字段。命中已有对象时保留已有的素材说明和标签。`alt`、`caption`、`widthPercent` 始终供各自的正文引用使用。
 
-$result = Invoke-RestMethod `
-  -Uri "http://localhost:5177/api/cli/compress" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body $body
+gallery 成功结果摘录
+
+```json
+{
+  "ok": true,
+  "source": "/notes/实验截图/栈帧.png",
+  "sourcePage": null,
+  "originalName": "栈帧.png",
+  "outputName": "4ba2c5cf6596c21870c48f09bf86c5e7.png",
+  "key": "img/2026/11/25/4ba2c5cf6596c21870c48f09bf86c5e7.png",
+  "url": "https://cdn.example/img/2026/11/25/4ba2c5cf6596c21870c48f09bf86c5e7.png",
+  "duplicate": false,
+  "mimeType": "image/png",
+  "keptOriginal": true,
+  "alt": "调用前后的两个栈帧",
+  "caption": "形参和实参中的引用指向同一个对象",
+  "widthPercent": 60,
+  "markdown": "![调用前后的两个栈帧 w-60%](https://cdn.example/img/2026/11/25/4ba2c5cf6596c21870c48f09bf86c5e7.png \"形参和实参中的引用指向同一个对象\")"
+}
 ```
 
-#### 压缩远程图片 URL
+**写正文时**，按 `source` 和 `index` 对应原图位置，对 `ok: true` 的条目直接使用 `markdown`。Shirone 的可见图注需要让图片独占一行。省略 `caption` 会生成无标题的标准 Markdown 图片；AI 可以依据原段落补图注。`alt` 默认取去掉扩展名的原名。相同原名或同一图片在不同段落的不同图注都保存在各自条目里。
 
-远程 URL 会先下载到 `tmp/remote-input/{jobId}`，随后复用本地压缩流程。无论压缩成功还是下载中途失败，这批下载下来的原图临时文件都会自动清理，压缩产物仍保留在 `tmp/output`，等待确认上传。
+**返回约定**：非交互上传与迁移命令的 stdout 只输出一个 JSON 对象。`items` 保持输入顺序，单张失败包含 `source` 和 `error`。退出码 `0` 表示全部成功，`1` 表示处理或保存失败（仍应读取成功项），`2` 表示参数或清单无效。默认清单保存在工具目录的 `tmp/cli-results/<jobId>/result.json`，绝对路径在 `resultPath`。指定 `--output` 会原子替换该结果文件。重试时，可将失败条目的 `source` 和原有图注整理为新输入清单。
 
-```powershell
-$body = @{
-  urls = @(
-    "https://example.com/a.jpg",
-    "https://example.com/b.png"
-  )
-  quality = 82
-  effort = 6
-  maxWidth = 0
-  downloadConcurrency = 4
-  compressConcurrency = 8
-} | ConvertTo-Json
+若仅图床素材说明写入失败，条目仍保留 `ok: true`、`url` 和 `markdown`，并附上 `metadataError`。整批退出码为 `1`。可以在管理页按 `key` 补录说明。
 
-$result = Invoke-RestMethod `
-  -Uri "http://localhost:5177/api/cli/compress-urls" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body $body
+## 网页和交互式 CLI
+
+```sh
+npm start
 ```
 
-#### 确认后上传
+浏览器打开 `http://127.0.0.1:5177`。页面使用 mdui 2.1.5，组件脚本和样式由本机服务提供。
 
-上传整个压缩批次：
+1. 在「图片来源」选择、拖入或粘贴图片。也可以切换到「本机目录」，输入运行服务的机器上的目录路径，递归读取其中的图片。大批量选图只为前几张生成轻量缩略图。
+2. 调整 WebP 质量和最长边，点击「压缩并预览」。质量预设、压缩努力度、最大宽度、请求分批和并发数在「高级设置」中。
+3. 在「处理队列」按原文件名核对缩略图、尺寸和体积，点击单张「上传」或「上传全部」。上传失败后可在同一行重试，详细错误见「运行日志」。
+4. 选择 Markdown、URL、BBCode 或 HTML，复制单张或当前队列的全部链接。上传前链接指向本地预览，上传后切换为图床地址。Markdown 图片的替代文本（alt）默认取原文件名。
 
-```powershell
-$uploadBody = @{
-  confirm = $true
-  jobId = $result.jobId
-  uploadConcurrency = 5
-} | ConvertTo-Json
+PicGo 网页模式将 SVG 栅格化为 WebP，gallery 模式与 CLI 共用保留原图策略。
 
-Invoke-RestMethod `
-  -Uri "http://localhost:5177/api/cli/upload" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body $uploadBody
-```
+习惯终端问答时运行 `picgo-webp interactive` 或 `npm run cli`。交互模式可只压缩，完成后保存旧版兼容的 `result.json` 和 `urls.txt`。
 
-只上传选中的文件：
+| 环境变量 | 默认行为 |
+| --- | --- |
+| `PICGO_PATH` | 在 PATH 中查找 `picgo`，Windows 支持 npm 安装的 `.cmd`。也可填写可执行文件的绝对路径 |
+| `PICGO_CONFIG` | PicGo 自身默认配置。填写配置文件路径可选择另一份配置 |
+| `PORT` | 网页服务绑定 `127.0.0.1:5177` |
+| `OUTPUT_DIR` | Web 和交互模式的预览目录，默认项目下的 `tmp/output`。非交互 CLI 使用独立的系统临时目录 |
 
-```powershell
-$selectedFileIds = @(
-  $result.items[0].fileId,
-  $result.items[1].fileId
-)
+PowerShell 可用 `$env:PICGO_PATH = 'D:\Tools\picgo.cmd'`；Linux 可用 `export PICGO_PATH=/opt/node/bin/picgo`。
 
-$uploadBody = @{
-  confirm = $true
-  fileIds = $selectedFileIds
-  uploadConcurrency = 2
-} | ConvertTo-Json
+## 已有 HTTP 接口
 
-Invoke-RestMethod `
-  -Uri "http://localhost:5177/api/cli/upload" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body $uploadBody
-```
+| 方法与路径 | 行为 |
+| --- | --- |
+| `GET /api/health` | 服务状态、当前后端和 PicGo 命令 |
+| `POST /api/compress` | multipart 字段 `images`，NDJSON 压缩预览事件 |
+| `POST /api/compress-directory` | JSON 字段 `directory`，递归扫描，NDJSON 压缩预览事件 |
+| `POST /api/upload-picgo` | JSON 字段 `fileId`，由当前后端上传，返回 NDJSON 日志与结果 |
+| `POST /api/cli/compress` | multipart 图片或 JSON 字段 `files`（本机路径数组），返回含 `jobId` 和 `items` 的 JSON |
+| `POST /api/cli/compress-directory` / `POST /api/cli/compress-urls` | 分别传 `directory` 或 `urls`，返回压缩清单 |
+| `POST /api/cli/upload` | 传 `confirm: true` 和 `jobId` 或 `fileIds`，返回 `items` 与 `urls` |
+| `POST /api/cleanup` | 传 `jobIds` 仅清理指定预览批次；省略时清理全部预览批次 |
 
-上传响应会返回 `items` 和 `urls`。其中 `urls` 是成功上传后的最终图床链接数组，`items` 保留每张图的 `fileId`、`url`、PicGo 原始输出和错误信息。
-
-### 交互式 CLI
-
-如果你想直接在终端里一步步选参数，可以运行：
-
-```powershell
-npm run cli
-```
-
-这个模式会让你选择来源（目录、文件或远程 URL）、质量、effort、最大宽度、压缩并发和上传并发。上传成功后会自动尝试把最终 URL 复制到剪贴板，同时把完整结果保存到 `tmp/cli-results/{jobId}/result.json` 和 `urls.txt`。
-
-## 运行时行为
-
-- 服务启动时会清理上一次残留的输入临时文件和预览输出文件。
-- 点击“清空”会调用 `/api/cleanup` 清理预览产物。
-- 单张上传成功后会删除对应的本地压缩文件，并清理空目录。
-- 压缩文件名使用压缩内容 MD5，确保同一内容生成稳定标识。
-- 上传返回 URL 来自 PicGo 输出日志，最终对象 key 由 PicGo 上传插件配置决定。
-
-## 注意事项
-
-- 本工具面向本机使用，不建议直接暴露到公网。
-- 本地目录直读接口可以访问运行该 Node 进程的文件系统，请只在可信环境中使用。
-- GIF 动图不会作为动图处理；当前压缩流程面向静态图片。
-- WebP `quality: 100` 不是无损 WebP。如需真正 lossless，需要在代码中启用 Sharp 的 `lossless: true`。
-- Windows 下执行 `.cmd` 格式的 PicGo CLI 时，服务端已对 `spawn` 启用 `shell: true`。
+压缩接口支持 `quality`、`effort`、`maxWidth`、`maxDimension`、`compressConcurrency`。上传及远程下载分别使用 `uploadConcurrency`、`downloadConcurrency`。网页重启后可继续通过已有文件 ID 上传。回归测试使用 `npm test`。

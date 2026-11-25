@@ -1,232 +1,123 @@
 <!doctype html>
-<html lang="zh-CN">
-
+<html lang="zh-CN" class="mdui-theme-auto">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PicGo WebP Uploader</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap"
-    rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>图片上传 · PicGo Uploader</title>
+  <link rel="stylesheet" href="/vendor/mdui/mdui.css">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
 </head>
-
 <body>
-  <!-- full-window drag overlay -->
-  <div id="dragOverlay" class="drag-overlay" aria-hidden="true">
-    <div class="drag-overlay-inner">
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="17 8 12 3 7 8" />
-        <line x1="12" y1="3" x2="12" y2="15" />
-      </svg>
-      <span>松开鼠标，上传图片</span>
+  <header class="app-bar">
+    <div class="bar-inner">
+      <div class="brand"><span class="brand-mark"><mdui-icon data-icon="collections"></mdui-icon></span>PicGo Uploader</div>
+      <div class="bar-tools">
+        <span id="health" class="backend"><mdui-icon data-icon="cloud"></mdui-icon><span>读取图床配置…</span></span>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <mdui-button-icon id="themeToggleBtn" title="切换到深色模式"><mdui-icon data-icon="moon"></mdui-icon><span class="sr-only" id="themeActionLabel">切换到深色模式</span></mdui-button-icon>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <main class="shell">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-left">
-        <div class="logo">
-          <div class="logo-icon">W</div>
+  <main class="workspace">
+    <div class="page-title">
+      <h1>图片上传</h1>
+      <p>先预览压缩结果，再上传单张或整批图片。</p>
+    </div>
+    <div class="setup">
+      <section class="panel source" aria-labelledby="source-title">
+        <div class="panel-head">
+          <h2 id="source-title">图片来源</h2>
+          <div id="sourceMode" role="radiogroup" aria-labelledby="source-title">
+            <label for="filesMode"><input id="filesMode" type="radio" name="source" value="files" checked><span>图片文件</span></label>
+            <label for="directoryMode"><input id="directoryMode" type="radio" name="source" value="directory"><span>本机目录</span></label>
+          </div>
         </div>
-        <div>
-          <h1>WebP Uploader</h1>
-          <p id="health" class="health-text">检查 PicGo…</p>
+        <div id="fileSource" class="source-body">
+          <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/avif,image/tiff,.avif,.tif,.tiff" multiple hidden>
+          <div id="dropzone" class="dropzone">
+            <div id="dropzoneContent" class="drop-content">
+              <mdui-icon class="drop-icon" data-icon="add-image"></mdui-icon>
+              <strong class="desktop-hint">将图片拖到这里</strong>
+              <span class="desktop-hint">也可以直接粘贴剪贴板中的图片</span>
+            </div>
+            <div id="selection" hidden>
+              <div id="thumbnails"></div>
+              <strong id="selectionSummary"></strong>
+              <p id="selectionNames"></p>
+            </div>
+            <mdui-button id="chooseFiles" variant="filled"><mdui-icon slot="icon" data-icon="add"></mdui-icon><span>选择图片</span></mdui-button>
+          </div>
+          <p class="formats">支持 JPG、PNG、WebP、GIF、SVG、AVIF 和 TIFF</p>
         </div>
-      </div>
-      <div class="header-actions">
-        <button id="themeToggleBtn" class="btn btn-icon" type="button" title="切换亮/暗色主题">
-          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
-            <circle cx="12" cy="12" r="5" />
-            <line x1="12" y1="1" x2="12" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="23" />
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-            <line x1="1" y1="12" x2="3" y2="12" />
-            <line x1="21" y1="12" x2="23" y2="12" />
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-          </svg>
-          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <!-- Upload Panel -->
-    <section class="card upload-panel">
-      <label class="dropzone" id="dropzone" for="fileInput">
-        <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/tiff" multiple />
-        <div id="dropzoneContent" class="dropzone-content">
-          <div class="dropzone-icon">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-          </div>
-          <span class="dropzone-title">拖拽、粘贴或点击选择图片</span>
-          <small class="dropzone-hint">支持 JPG / PNG / WebP / AVIF / TIFF，多选；动图不处理</small>
+        <div id="directorySource" class="source-body directory" hidden>
+          <label for="localDirectoryPath">本机目录路径</label>
+          <input id="localDirectoryPath" type="text" spellcheck="false" autocomplete="off" placeholder="输入图片所在文件夹的完整路径" aria-describedby="directoryHint">
+          <p id="directoryHint">服务将递归读取该目录及子目录，适合大批量图片。</p>
         </div>
-        <div id="dropzonePreview" class="dropzone-preview" style="display: none;"></div>
-      </label>
+        <div class="source-actions">
+          <span id="sourceStatus"></span>
+          <mdui-button id="uploadBtn" variant="filled" disabled><mdui-icon slot="icon" data-icon="compress"></mdui-icon><span>压缩并预览</span></mdui-button>
+        </div>
+      </section>
 
-      <div class="local-path-row">
-        <input id="localDirectoryPath" type="text" value="D:\Code\Blog\MyBlog\public\images\albums\AcgExample"
-          placeholder="输入本机目录路径，后端直接读取，适合大批量相册" />
-        <button id="compressDirectoryBtn" class="btn btn-ghost" type="button">
-          压缩本地目录
-        </button>
-      </div>
-
-      <div class="controls">
-        <label class="control-group">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span class="control-label">WebP 质量 <strong id="qualityLabel">82</strong></span>
-            <select id="qualityPreset"
-              style="height: 28px; padding: 0 8px; font-size: 12px; border-radius: 4px; width: auto; font-family: var(--font-sans); color: var(--text-2); background: var(--bg-card); border: 1px solid var(--border-hover);">
-              <option value="75">极限</option>
-              <option value="82" selected>常规</option>
-              <option value="88">高清</option>
-              <option value="100">最高质量</option>
-              <option value="" hidden>自定义</option>
-            </select>
+      <section class="panel settings" aria-labelledby="settings-title">
+        <div class="panel-head"><h2 id="settings-title">压缩设置</h2><mdui-icon class="section-icon" data-icon="tune"></mdui-icon></div>
+        <div class="setting-body">
+          <div class="field-heading"><label id="qualityTitle" for="quality">WebP 质量</label><output id="qualityLabel" for="quality">82</output></div>
+          <input type="range" id="quality" min="1" max="100" step="1" value="82">
+          <div class="scale"><span>更小体积</span><span>更高清晰度</span></div>
+          <div class="field-block"><label for="dimensionPreset">最长边</label>
+            <select id="dimensionPreset"><option value="0">保留原尺寸</option><option value="1280">1280 px</option><option value="1920">1920 px</option><option value="2560">2560 px</option><option value="3840">3840 px</option><option value="custom">自定义尺寸</option></select>
+            <label id="customDimension" for="maxDimension" hidden>最长边（px）<input id="maxDimension" type="number" min="1" max="20000" step="1" value="2560" required></label>
           </div>
-          <input id="quality" type="range" min="1" max="100" value="82" />
-        </label>
-
-        <label class="control-group">
-          <span class="control-label">压缩努力度 <strong id="effortLabel">6</strong></span>
-          <input id="effort" type="range" min="0" max="6" value="6" />
-        </label>
-
-        <label class="control-group">
-          <span class="control-label">压缩并发</span>
-          <select id="compressConcurrency">
-            <option value="4">4 - 稳定</option>
-            <option value="8" selected>8 - 快速</option>
-            <option value="12">12 - 高速</option>
-            <option value="16">16 - 激进</option>
-            <option value="24">24 - 极限</option>
-          </select>
-        </label>
-
-        <label class="control-group">
-          <span class="control-label">请求分批</span>
-          <select id="compressBatchSize">
-            <option value="0" selected>不分批</option>
-            <option value="10">10 MB</option>
-            <option value="25">25 MB</option>
-            <option value="50">50 MB</option>
-            <option value="100">100 MB</option>
-          </select>
-        </label>
-
-        <label class="control-group">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span class="control-label">最大宽度 (px)</span>
-            <select id="widthPreset"
-              style="height: 28px; padding: 0 8px; font-size: 12px; border-radius: 4px; width: auto; font-family: var(--font-sans); color: var(--text-2); background: var(--bg-card); border: 1px solid var(--border-hover);">
-              <option value="0">不限制</option>
-              <option value="800">800</option>
-              <option value="1280">1280</option>
-              <option value="1920">1920</option>
-              <option value="2560">2560</option>
-              <option value="3840">3840</option>
-              <option value="" hidden>自定义</option>
-            </select>
+        </div>
+        <details id="advanced" class="advanced">
+          <summary><span>高级设置</span><mdui-icon data-icon="expand"></mdui-icon></summary>
+          <div class="advanced-fields">
+            <label for="qualityPreset">质量预设<select id="qualityPreset"><option value="75">75 · 更小</option><option value="82" selected>82 · 均衡</option><option value="88">88 · 清晰</option><option value="100">100 · 最高质量</option><option value="" disabled>自定义</option></select></label>
+            <label for="effort">压缩努力度<select id="effort"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
+            <label for="maxWidth">最大宽度（px）<input id="maxWidth" type="number" min="0" max="20000" value="0" step="1" list="widths" required><datalist id="widths"><option value="0"></option><option value="800"></option><option value="1280"></option><option value="1920"></option><option value="2560"></option><option value="3840"></option></datalist></label>
+            <label for="compressBatchSize">请求分批<select id="compressBatchSize"><option value="0">不分批</option><option value="10">10 MB</option><option value="25">25 MB</option><option value="50">50 MB</option><option value="100">100 MB</option></select></label>
+            <label for="compressConcurrency">压缩并发<input id="compressConcurrency" type="number" min="1" max="64" value="8" step="1" required></label>
+            <label for="uploadConcurrency">上传并发<input id="uploadConcurrency" type="number" min="1" max="10" value="5" step="1" required></label>
           </div>
-          <input id="maxWidth" type="number" min="0" max="20000" step="1" value="0" placeholder="0 = 不限制" />
-        </label>
+        </details>
+      </section>
+    </div>
 
-        <label class="control-group">
-          <span class="control-label">上传并发</span>
-          <select id="uploadConcurrency">
-            <option value="1">1 - 稳定</option>
-            <option value="2">2 - 均衡</option>
-            <option value="3">3 - 快速</option>
-            <option value="5" selected>5 - 高速</option>
-            <option value="8">8 - 激进</option>
-            <option value="10">10 - 极限</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="actions">
-        <button id="uploadBtn" class="btn btn-primary" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            <line x1="11" y1="8" x2="11" y2="14"></line>
-            <line x1="8" y1="11" x2="14" y2="11"></line>
-          </svg>
-          压缩并预览
-        </button>
-        <button id="uploadAllBtn" class="btn btn-ghost" type="button" disabled>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          上传全部就绪图片
-        </button>
-        <span id="summary" class="summary-text">未选择文件</span>
-      </div>
-    </section>
-
-    <!-- Progress & Results -->
-    <section class="card results-panel" id="resultsPanel" style="display: none;">
-      <div class="results-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border-light); padding-bottom: 12px;">
-        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-1); font-family: var(--font-sans);">处理面板</h3>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <div class="copy-group" style="display: flex; align-items: center; gap: 4px;">
-            <select id="copyFormat" class="copy-select" style="height: 32px; padding: 0 8px; font-size: 13px; border-radius: 4px; background: transparent; color: var(--text-2); border: 1px solid transparent; cursor: pointer; transition: all var(--transition);">
-              <option value="markdown">Markdown (![名](链))</option>
-              <option value="url">原始链接 (https://...)</option>
-              <option value="bbcode">论坛代码 ([img]链[/img])</option>
-              <option value="html">网页标签 (&lt;img src...&gt;)</option>
-            </select>
-            <button id="copyAllBtn" class="btn btn-ghost btn-sm" type="button" title="一键复制" disabled>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-              </svg>
-              <span class="btn-text">复制全部</span>
-            </button>
-          </div>
-          <button id="clearBtn" class="btn btn-ghost btn-sm" type="button">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-            <span class="btn-text">清空</span>
-          </button>
+    <section class="panel queue" id="resultsPanel" aria-labelledby="queue-title">
+      <div class="panel-head queue-head">
+        <div class="queue-title"><h2 id="queue-title" tabindex="-1">处理队列</h2><span id="queueCount">0</span></div>
+        <div class="queue-actions" id="queueActions" hidden>
+          <mdui-button variant="text" id="clearBtn">清空</mdui-button>
+          <mdui-button variant="tonal" id="uploadAllBtn"><mdui-icon slot="icon" data-icon="upload"></mdui-icon><span>上传全部</span></mdui-button>
         </div>
       </div>
-      <div class="progress-track">
-        <div id="progressFill" class="progress-fill"></div>
+      <div class="empty" id="emptyState"><mdui-icon data-icon="layers"></mdui-icon><p>压缩后的图片会显示在这里</p></div>
+      <div id="batchProgress" hidden><div id="progressLabel"></div><progress aria-labelledby="progressLabel"></progress></div>
+      <p id="batchError" role="alert" hidden></p>
+      <div id="results"></div>
+      <div id="copyBar" class="copy-bar" hidden>
+        <span id="linkSummary"></span>
+        <div><label for="copyFormat" class="sr-only">复制格式</label><select id="copyFormat"><option value="markdown">Markdown</option><option value="url">URL</option><option value="bbcode">BBCode</option><option value="html">HTML</option></select>
+        <mdui-button variant="outlined" id="copyAllBtn"><mdui-icon slot="icon" data-icon="copy"></mdui-icon>复制全部</mdui-button></div>
       </div>
-      <div id="results" class="results"></div>
     </section>
   </main>
-
-  <!-- Toast container -->
-  <div id="toasts" class="toasts"></div>
-
-  <script src="/app.js" type="module"></script>
+  <template id="resultTemplate">
+    <article class="result-row">
+      <div class="thumb"><mdui-icon data-icon="image"></mdui-icon></div>
+      <div class="file-info"><h3></h3><p class="meta"><span class="size"></span><span class="dimensions"></span></p><a class="file-link" target="_blank" rel="noopener noreferrer" hidden></a><p class="file-error" hidden></p>
+        <details class="logs" hidden><summary>运行日志</summary><pre></pre></details></div>
+      <span class="state"></span>
+      <div class="row-actions"><mdui-button class="upload-one" variant="text" hidden>上传</mdui-button>
+        <mdui-button-icon class="copy-one" title="复制链接" hidden><mdui-icon data-icon="copy"></mdui-icon><span class="sr-only"></span></mdui-button-icon></div>
+    </article>
+  </template>
+  <div id="liveStatus" class="sr-only" role="status"></div>
+  <mdui-snackbar id="notice" placement="bottom" timeout="2400"></mdui-snackbar>
 </body>
-
 </html>

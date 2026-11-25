@@ -1,108 +1,160 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveOutputDirectory, resolveOutputFile, walkFiles } from "../utils/files.mjs";
+import { stripVTControlCharacters } from "node:util";
+import { cleanupEmptyParents, cleanupFiles, resolveOutputDirectory, resolveOutputFile, walkFiles } from "../utils/files.mjs";
+import { mapConcurrent } from "../utils/batch.mjs";
+import { outputMimeTypes } from "../utils/image.mjs";
+import { createGalleryClient } from "./gallery.mjs";
 
-export function createUploadService({ picgoPath, outputDir }) {
+function uploadable(file) {
+  return outputMimeTypes.has(path.extname(file).toLowerCase());
+}
+
+async function previewInfo(filePath) {
+  try { return JSON.parse(await fs.readFile(filePath + ".json", "utf8")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  // Previews produced before gallery support still have a usable filename and bytes.
+  const hash = createHash("md5");
+  let compressedBytes = 0;
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk);
+    compressedBytes += chunk.length;
+  }
+  return { originalName: path.basename(filePath), mimeType: outputMimeTypes.get(path.extname(filePath).toLowerCase()),
+    md5: hash.digest("hex"), compressedBytes };
+}
+
+function finalUrl(stdout) {
+  // PicGo logs the result after its SUCCESS marker. A wrapper may print just the URL.
+  const lines = stripVTControlCharacters(stdout).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const marker = /\[(?:PicGo\s+)?SUCCESS\]\s*:?\s*/i;
+  const success = lines.findLastIndex(line => marker.test(line));
+  let value = lines.at(-1);
+  if (success >= 0) {
+    const inline = lines[success].split(marker).at(-1);
+    value = inline || lines[success + 1];
+  } else {
+    const error = lines.find(line => /\[(?:PicGo\s+)?ERROR\]/i.test(line));
+    if (error) throw new Error(error);
+  }
+  if (/^https?:\/\//i.test(value)) {
+    try { return new URL(value).href; } catch { /* report a missing or malformed result */ }
+  }
+  throw new Error("PicGo 未返回有效的图床 URL，请检查图床配置或上传日志");
+}
+
+function startPicgo(command, filePath, configPath) {
+  const options = { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] };
+  const args = ["upload", filePath];
+  if (configPath) args.push("-c", path.resolve(configPath));
+  if (process.platform !== "win32" || /\.(exe|com)$/i.test(command)) {
+    return spawn(command, args, options);
+  }
+
+  // npm installs a batch shim on Windows. Keep paths in quoted environment
+  // expansions, never interpolate their contents into the command itself.
+  const env = { ...process.env, PG_UPLOAD_COMMAND: command, PG_UPLOAD_FILE: filePath };
+  let invocation = '"%PG_UPLOAD_COMMAND%" upload "%PG_UPLOAD_FILE%"';
+  if (configPath) {
+    env.PG_UPLOAD_CONFIG = path.resolve(configPath);
+    invocation += ' -c "%PG_UPLOAD_CONFIG%"';
+  }
+  if ([command, filePath, env.PG_UPLOAD_CONFIG ?? ""].some(arg => /["\r\n]/.test(arg))) {
+    throw new Error("Windows 路径不能包含双引号或换行");
+  }
+  return spawn(process.env.ComSpec || "cmd.exe", ["/d", "/v:off", "/s", "/c", '"' + invocation + '"'],
+    { ...options, env, windowsVerbatimArguments: true });
+}
+
+export function createUploadService({ picgoPath, outputDir, configPath = process.env.PICGO_CONFIG, backend = "picgo" }) {
+  const gallery = backend === "gallery" ? createGalleryClient() : null;
+  const pending = new Map();
+  const galleryUploads = new Map();
+
+  async function uploadToGallery(filePath, info) {
+    const image = info ?? await previewInfo(filePath);
+    if (galleryUploads.has(image.md5)) return { ...await galleryUploads.get(image.md5), duplicate: true };
+    const upload = gallery.upload(filePath, { ...image, outputName: path.basename(filePath) });
+    galleryUploads.set(image.md5, upload);
+    try { return await upload; } finally { galleryUploads.delete(image.md5); }
+  }
+
   function uploadWithPicgo(filePath, onLog) {
-    const TIMEOUT_MS = 120_000;
-
     return new Promise((resolve, reject) => {
-      const child = spawn(picgoPath, ["upload", filePath], {
-        windowsHide: true,
-        shell: process.platform === "win32"
-      });
-
-      let raw = "";
-      let stderr = "";
-      let settled = false;
-
+      const child = startPicgo(picgoPath, filePath, configPath);
       const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          child.kill();
-          reject(new Error(`PicGo 上传超时 (${TIMEOUT_MS / 1000}s)`));
-        }
-      }, TIMEOUT_MS);
-
-      const handleChunk = (chunk, isError = false) => {
-        const text = chunk.toString();
-        raw += text;
-        if (isError) {
-          stderr += text;
-        }
-        for (const line of text.split(/\r?\n/)) {
-          const trimmed = line.trim();
-          if (trimmed) {
-            onLog(trimmed);
-          }
-        }
-      };
-
-      child.stdout.on("data", (chunk) => handleChunk(chunk));
-      child.stderr.on("data", (chunk) => handleChunk(chunk, true));
-      child.on("error", (err) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          reject(err);
-        }
-      });
-      child.on("close", (code) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-
-        if (code !== 0) {
-          reject(new Error(stderr || raw || `PicGo exited with code ${code}`));
-          return;
-        }
-
-        const urls = raw.match(/https?:\/\/[^\s"'<>]+/g) ?? [];
-        resolve({
-          raw,
-          url: urls.at(-1) ?? ""
+        child.kill();
+        reject(new Error("PicGo 上传超时 (120s)"));
+      }, 120000);
+      let stdout = "";
+      let raw = "";
+      for (const stream of [child.stdout, child.stderr]) {
+        stream.setEncoding("utf8");
+        stream.on("data", text => {
+          if (stream === child.stdout) stdout += text;
+          raw += text;
+          if (onLog) for (const line of text.trimEnd().split(/\r?\n/)) onLog(line);
         });
+      }
+      child.on("error", error => {
+        clearTimeout(timer);
+        reject(error.code === "ENOENT" ? new Error(`找不到 PicGo 命令 ${picgoPath}，请安装 PicGo CLI 或设置 PICGO_PATH`) : error);
+      });
+      child.on("close", code => {
+        clearTimeout(timer);
+        if (code !== 0) return reject(new Error(`PicGo 上传失败 (exit ${code}): ${raw.trim() || picgoPath}`));
+        try { resolve({ raw, url: finalUrl(stdout) }); } catch (error) { reject(error); }
       });
     });
   }
 
-  async function collectUploadFileIds(body) {
-    if (Array.isArray(body?.fileIds)) {
-      const fileIds = body.fileIds.map((fileId) => {
-        if (typeof fileId !== "string" || !fileId || fileId.includes("..") || path.isAbsolute(fileId)) {
-          throw new Error("invalid fileIds");
-        }
-        resolveOutputFile(outputDir, fileId);
-        return fileId;
-      });
-
-      if (!fileIds.length) {
-        throw new Error("fileIds must not be empty");
-      }
-
-      return fileIds;
-    }
-
-    if (typeof body?.jobId === "string" && body.jobId && !body.jobId.includes("..") && !path.isAbsolute(body.jobId)) {
-      const jobDir = resolveOutputDirectory(outputDir, body.jobId);
-      const files = await walkFiles(jobDir);
-      const fileIds = files
-        .filter((file) => path.extname(file.originalname).toLowerCase() === ".webp")
-        .map((file) => path.relative(outputDir, file.path).split(path.sep).join("/"))
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-      if (!fileIds.length) {
-        throw new Error("jobId has no uploadable files");
-      }
-
-      return fileIds;
-    }
-
-    throw new Error("provide fileIds or jobId");
+  function validateId(fileId) {
+    if (typeof fileId !== "string" || !fileId || fileId.split(/[\\/]/).includes("..")
+      || path.isAbsolute(fileId) || !uploadable(fileId)) throw new Error("Invalid fileId");
+    return resolveOutputFile(outputDir, fileId);
   }
 
-  return {
-    uploadWithPicgo,
-    collectUploadFileIds
-  };
+  async function collectUploadFileIds(body) {
+    if (Array.isArray(body?.fileIds)) {
+      if (!body.fileIds.length) throw new Error("fileIds must not be empty");
+      body.fileIds.forEach(validateId);
+      return body.fileIds;
+    }
+    const jobId = body?.jobId;
+    if (typeof jobId !== "string" || !jobId || /[\\/]/.test(jobId)) throw new Error("provide fileIds or jobId");
+    const files = await walkFiles(resolveOutputDirectory(outputDir, jobId), Infinity, uploadable);
+    const ids = files.map(file => path.relative(outputDir, file.path).split(path.sep).join("/"))
+      .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+    if (!ids.length) throw new Error("jobId has no uploadable files");
+    return ids;
+  }
+
+  async function uploadFile(fileId, onLog, image) {
+    const filePath = validateId(fileId);
+    if (pending.has(filePath)) return pending.get(filePath);
+    const run = async () => {
+      await fs.access(filePath);
+      const result = gallery ? await uploadToGallery(filePath, image) : await uploadWithPicgo(filePath, onLog);
+      await cleanupFiles([filePath, filePath + ".json"]);
+      await cleanupEmptyParents(path.dirname(filePath), outputDir);
+      return result;
+    };
+    pending.set(filePath, run());
+    try { return await pending.get(filePath); } finally { pending.delete(filePath); }
+  }
+
+  async function uploadFiles(fileIds, concurrency) {
+    const items = await mapConcurrent(fileIds, concurrency, async fileId => {
+      const logs = [];
+      try { return { ok: true, fileId, ...await uploadFile(fileId, line => logs.push(line)), logs }; }
+      catch (error) { return { ok: false, fileId, error: error.message, logs }; }
+    });
+    const urls = items.filter(item => item.ok).map(item => item.url);
+    return { ok: urls.length === items.length, total: items.length, succeeded: urls.length,
+      failed: items.length - urls.length, items, urls };
+  }
+  return { collectUploadFileIds, uploadFile, uploadFiles };
 }
